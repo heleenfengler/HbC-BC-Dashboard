@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Healthbridge Design System — Reference & Starter</title>
+
+  <!-- ================================================================
+       Healthbridge Design System (HBDS) — single-file reference
+       ----------------------------------------------------------------
+       This file is three things in one:
+         1. A drop-in STARTER — copy it, delete the demo sections
+            between the "DEMO" markers, and start building.
+         2. A visual REFERENCE — renders swatches, type ramp, components.
+         3. A source of TRUTH — the full token system + official logo
+            live inline, with no external asset dependencies.
+
+       Source: extracted verbatim from the Practitioner Onboarding
+       prototype bundle (HBDS v1, Figma export).
+
+       External deps:
+         - Figtree / Inter / Poppins via Google Fonts (see <link> below).
+           Swap for self-hosted woff2 if offline use is required.
+
+       Usage tips:
+         - Prefer SEMANTIC tokens (--brand, --fg-1, --bg-canvas) over
+           primitives (--orange-100, --slate-900) inside components.
+         - The official wordmark is inlined as <svg id="hb-logo"> in
+           the header. Copy that <svg> block into any prototype.
+       ================================================================ -->
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================
+       TOKENS — HBDS colors_and_type.css (verbatim from Figma export)
+       ============================================================ */
+
+    :root {
+      /* =========================================================
+         OFFICIAL BRAND PRIMARIES (the canonical six)
+         ========================================================= */
+      --brand-orange:       #F7941D; /* Pantone 144c */
+      --brand-black:        #000000; /* Pantone Black c */
+      --brand-charcoal:     #414042; /* Pantone Cool Gray 11c */
+      --brand-purple:       #7757EC; /* Pantone 2725 c */
+      --brand-burnt-orange: #FF4D00; /* Pantone Orange 021 c */
+      --brand-bright-green: #75EB9E; /* Pantone 2268 c */
+
+      /* Neutrals / Slate */
+      --slate-900: #202223;  /* Text / Default */
+      --slate-700: #6D7175;
+      --slate-500: #C9CCCF;
+      --slate-300: #E6E9EC;
+      --slate-100: #F4F4F5;
+      --slate-50:  #F7F6FB;
+      --white:     #FFFFFF;
+      --black:     #000000;
+
+      /* Supporting text tones used in cards */
+      --text-navy: #002040;
+      --text-muted: #AEB5BC;
+      --text-muted-uc: #8E98A8;
+      --text-body-2: #6C757D;
+      --text-graphite: #141C25;
+
+      /* Healthbridge Orange (PRIMARY) */
+      --orange-100: #F7941C;     /* brand */
+      --orange-spark: #F69320;   /* logo spark */
+      --orange-deep: #DE8519;    /* hover / pressed */
+      --orange-40:  #FDEAD2;     /* label strip, tints */
+      --orange-20:  #FEF4E8;     /* subtle bg */
+
+      /* Purple (SECONDARY / accent) */
+      --purple-100: #7757EC;
+      --purple-40:  #C9BCF7;
+      --purple-20:  #E4DDFB;
+      --purple-10:  #F1EEFD;
+      --purple-5:   #FBFBFF;
+
+      /* Digital Blue (informational, links) */
+      --blue-100: #0067C5;
+      --blue-40:  #CCE1F3;
+      --blue-20:  #E5F0F9;
+      --blue-5:   #F2F7FC;
+
+      /* Critical Red */
+      --red-100: #D82C0D;
+      --red-40:  #F7D5CF;
+      --red-20:  #FBEAE7;
+
+      /* Success Green */
+      --green-100: #008060;
+      --green-40:  #CCE5DF;
+      --green-20:  #E5F2EF;
+
+      /* Warning Yellow */
+      --yellow-100: #FFCE00;
+      --yellow-40:  #FFF5CC;
+      --yellow-20:  #FFFAE5;
+
+      /* Accent Orange-Red */
+      --orangered-100: #FF4D00;
+      --orangered-40:  #FFDBCC;
+      --orangered-20:  #FFEDE5;
+
+      /* Mint */
+      --mint-100: #75EB9E;
+      --mint-20:  #E3FBEC;
+
+      /* =========================================================
+         SEMANTIC TOKENS (prefer these in components)
+         ========================================================= */
+      --fg-1: var(--slate-900);        /* primary text */
+      --fg-2: var(--slate-700);        /* secondary text */
+      --fg-3: var(--slate-500);        /* disabled / hint */
+      --fg-on-brand: var(--white);     /* text on orange */
+      --fg-on-tint: var(--orange-100); /* label text on orange tint */
+
+      --bg-canvas: var(--slate-100);   /* page canvas */
+      --bg-shell:  var(--white);       /* page shell card */
+      --bg-surface: var(--white);
+      --bg-subtle: var(--blue-5);      /* nested feature surface */
+      --bg-tint-brand: var(--orange-40);
+      --bg-tint-info:  var(--blue-20);
+      --bg-tint-danger: var(--red-20);
+      --bg-tint-success: var(--green-20);
+      --bg-tint-warning: var(--yellow-20);
+
+      --border-1: var(--slate-300);
+      --border-subtle: var(--slate-50);
+      --border-focus: var(--orange-100);
+
+      --brand: var(--orange-100);
+      --brand-hover: var(--orange-deep);
+      --brand-tint: var(--orange-40);
+
+      --link: var(--blue-100);
+      --danger: var(--red-100);
+      --success: var(--green-100);
+      --warning: var(--yellow-100);
+      --info: var(--blue-100);
+
+      /* =========================================================
+         TYPE FAMILIES
+         Healthbridge uses Figtree for both display and body.
+         Inter + Poppins kept as fallbacks for pre-existing usages.
+         ========================================================= */
+      --font-display: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --font-body:    'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --font-label:   'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+      /* Data-viz palette (categorical) */
+      --chart-1: #7757EC;   /* purple — category A */
+      --chart-2: #75EB9E;   /* mint   — category B */
+      --chart-3: #F7941C;   /* orange — category C / accent */
+      --chart-4: #0067C5;   /* blue   — category D */
+      --chart-1-mute: #E4DDFB;
+      --chart-2-mute: #E3FBEC;
+      --chart-3-mute: #FDEAD2;
+      --chart-4-mute: #E5F0F9;
+
+      /* Dark surface used in presentation templates */
+      --bg-dark: #414042;
+      --fg-on-dark: #FFFFFF;
+
+      /* =========================================================
+         TYPE RAMP (role-based)
+         ========================================================= */
+      --text-title-size: 36px;  --text-title-lh: 52px;  --text-title-tracking: -2px;  --text-title-weight: 700;
+      --text-h1-size: 28px;     --text-h1-lh: 36px;
+      --text-h2-size: 22px;     --text-h2-lh: 30px;
+      --text-h3-size: 18px;     --text-h3-lh: 26px;
+      --text-body-l-size: 18px; --text-body-l-lh: 28px;
+      --text-body-m-size: 16px; --text-body-m-lh: 24px;
+      --text-body-s-size: 14px; --text-body-s-lh: 20px;
+      --text-nav-size: 14px;    --text-nav-lh: 20px;  --text-nav-weight: 500;
+      --text-brand-size: 18px;  --text-brand-lh: 23px; --text-brand-weight: 600;
+      --text-label-size: 18px;  --text-label-lh: 28px; --text-label-tracking: 6px; --text-label-weight: 700;
+
+      /* =========================================================
+         SPACING / RADII / ELEVATION / MOTION
+         ========================================================= */
+      --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+      --space-5: 20px; --space-6: 28px; --space-7: 32px; --space-8: 40px;
+      --space-10: 80px; --space-12: 200px;
+
+      --radius-sm: 8px; --radius-md: 10px; --radius-lg: 16px;
+      --radius-xl: 20px; --radius-2xl: 24px; --radius-pill: 999px;
+
+      --shadow-1: 0 1px 2px rgba(32,34,35,.06), 0 4px 12px rgba(32,34,35,.04);
+      --shadow-2: 0 2px 6px rgba(32,34,35,.08), 0 12px 28px rgba(32,34,35,.06);
+      --shadow-focus: 0 0 0 3px rgba(247,148,28,.28);
+
+      --duration-fast: 120ms;
+      --duration-base: 180ms;
+      --duration-slow: 240ms;
+      --ease-out: cubic-bezier(.2,.8,.2,1);
+    }
+
+    /* ============================================================
+       ELEMENT DEFAULTS
+       ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: var(--font-body);
+      color: var(--fg-1);
+      background: var(--slate-50);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    input, button, textarea, select { font-family: inherit; }
+    input::placeholder { color: var(--text-muted); }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 2px;
+    }
+
+    /* ============================================================
+       SEMANTIC TYPOGRAPHY CLASSES
+       ============================================================ */
+    .hb-title, h1.hb-title {
+      font-family: var(--font-display);
+      font-weight: var(--text-title-weight);
+      font-size: var(--text-title-size);
+      line-height: var(--text-title-lh);
+      letter-spacing: var(--text-title-tracking);
+      color: var(--fg-1); margin: 0;
+    }
+    .hb-h1, h1 {
+      font-family: var(--font-display); font-weight: 700;
+      font-size: var(--text-h1-size); line-height: var(--text-h1-lh);
+      color: var(--fg-1); margin: 0;
+    }
+    .hb-h2, h2 {
+      font-family: var(--font-display); font-weight: 600;
+      font-size: var(--text-h2-size); line-height: var(--text-h2-lh);
+      color: var(--fg-1); margin: 0;
+    }
+    .hb-h3, h3 {
+      font-family: var(--font-display); font-weight: 600;
+      font-size: var(--text-h3-size); line-height: var(--text-h3-lh);
+      color: var(--fg-1); margin: 0;
+    }
+    .hb-body-l { font-family: var(--font-body); font-size: var(--text-body-l-size); line-height: var(--text-body-l-lh); font-weight: 400; color: var(--fg-1); }
+    .hb-body-m, p { font-family: var(--font-body); font-size: var(--text-body-m-size); line-height: var(--text-body-m-lh); font-weight: 400; color: var(--fg-1); margin: 0; }
+    .hb-body-s { font-family: var(--font-body); font-size: var(--text-body-s-size); line-height: var(--text-body-s-lh); font-weight: 400; color: var(--fg-2); }
+    .hb-nav {
+      font-family: var(--font-display); font-weight: var(--text-nav-weight);
+      font-size: var(--text-nav-size); line-height: var(--text-nav-lh); color: var(--fg-1);
+    }
+    .hb-brand {
+      font-family: var(--font-display); font-weight: var(--text-brand-weight);
+      font-size: var(--text-brand-size); line-height: 125.3%; color: var(--fg-1);
+    }
+    .hb-label {
+      font-family: var(--font-label); font-weight: var(--text-label-weight);
+      font-size: var(--text-label-size); line-height: var(--text-label-lh);
+      letter-spacing: var(--text-label-tracking);
+      text-transform: uppercase; color: var(--brand);
+    }
+    code, pre, .hb-mono {
+      font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+      font-size: 13px; color: var(--fg-2);
+    }
+
+    /* ============================================================
+       ANIMATIONS
+       ============================================================ */
+    @keyframes hb-fade-up {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes hb-fade-in {
+      from { opacity: 0; } to { opacity: 1; }
+    }
+    @keyframes hb-scale-in {
+      from { opacity: 0; transform: scale(.92); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    @keyframes hb-ring-grow   { from { stroke-dashoffset: 283; } to { stroke-dashoffset: 0; } }
+    @keyframes hb-tick        { from { stroke-dashoffset: 40; }  to { stroke-dashoffset: 0; } }
+    @keyframes hb-confetti-fall {
+      0%   { transform: translate3d(0, -40px, 0) rotate(0deg); opacity: 0; }
+      10%  { opacity: 1; }
+      100% { transform: translate3d(var(--dx, 0), 620px, 0) rotate(var(--r, 360deg)); opacity: 0; }
+    }
+    @keyframes hb-pulse-ring {
+      0%   { transform: scale(.8);  opacity: .7; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+    .hb-anim-fade-up { animation: hb-fade-up 420ms var(--ease-out) both; }
+    .hb-anim-fade-in { animation: hb-fade-in 320ms ease-out both; }
+
+    /* ============================================================
+       COMPONENT CLASSES
+       Plain-CSS translations of the React UI kit in the source
+       bundle (Button, Input, Select, Pill, Card, RadioCard).
+       Copy these into new prototypes as needed.
+       ============================================================ */
+
+    /* ---- Card ---- */
+    .hb-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-1);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      box-shadow: var(--shadow-1);
+    }
+
+    /* ---- Buttons ---- */
+    .btn {
+      font-family: var(--font-display); font-weight: 600; font-size: 15px;
+      padding: 13px 20px; border-radius: 12px;
+      border: 0; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px;
+      transition: background var(--duration-base) var(--ease-out),
+                  transform var(--duration-fast),
+                  box-shadow var(--duration-base);
+      line-height: 1; user-select: none;
+    }
+    .btn-primary        { background: var(--brand); color: var(--fg-on-brand); }
+    .btn-primary:hover  { background: var(--brand-hover); }
+    .btn-secondary      { background: var(--white); color: var(--slate-900); border: 1px solid var(--border-1); }
+    .btn-secondary:hover{ background: var(--slate-50); }
+    .btn-ghost          { background: transparent; color: var(--fg-2); padding: 13px 12px; }
+    .btn-ghost:hover    { color: var(--fg-1); }
+    .btn-dark           { background: var(--slate-900); color: var(--white); }
+    .btn:active         { transform: scale(0.98); }
+    .btn:disabled       { opacity: .5; cursor: not-allowed; }
+
+    /* ---- Form fields ---- */
+    .hb-field { display: flex; flex-direction: column; gap: 6px; }
+    .hb-field > label > span:first-child,
+    .hb-field > span.label {
+      font-size: 13px; font-weight: 500; color: var(--fg-2);
+    }
+    .hb-input {
+      display: flex; align-items: center; gap: 10px;
+      padding: 13px 14px; border-radius: 12px;
+      border: 1px solid var(--border-1);
+      background: var(--white);
+      transition: border-color 160ms, box-shadow 160ms;
+    }
+    .hb-input:focus-within {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(247,148,28,.18);
+    }
+    .hb-input input, .hb-input select, .hb-input textarea {
+      flex: 1; border: 0; outline: none; background: transparent;
+      font-size: 15px; color: var(--fg-1); min-width: 0;
+    }
+    .hb-hint  { font-size: 12.5px; color: var(--text-muted-uc); }
+    .hb-error { font-size: 12.5px; color: var(--danger); }
+
+    /* ---- Pills / tags ---- */
+    .hb-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      background: var(--bg-tint-brand);
+      color: var(--fg-on-tint);
+      font-size: 12px; font-weight: 600;
+    }
+    .hb-pill.info    { background: var(--bg-tint-info);    color: var(--info); }
+    .hb-pill.success { background: var(--bg-tint-success); color: var(--success); }
+    .hb-pill.danger  { background: var(--bg-tint-danger);  color: var(--danger); }
+    .hb-pill.warning { background: var(--bg-tint-warning); color: #8A6A00; }
+
+    /* ---- Radio card (for feature/option selection) ---- */
+    .hb-radio-card {
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: 16px; border-radius: 14px;
+      border: 1.5px solid var(--border-1);
+      background: var(--white);
+      cursor: pointer; text-align: left; width: 100%;
+      transition: all 160ms;
+    }
+    .hb-radio-card:hover { border-color: var(--slate-500); }
+    .hb-radio-card.selected {
+      border-color: var(--brand);
+      background: var(--orange-20);
+    }
+
+    /* ============================================================
+       DEMO-PAGE LAYOUT
+       Delete everything from here to the end of this style block
+       if you want a truly blank starter.
+       ============================================================ */
+    .page-shell {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-6);
+    }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: var(--space-4) 0;
+      border-bottom: 1px solid var(--border-subtle);
+      margin-bottom: var(--space-8);
+    }
+    .topbar nav { display: flex; gap: var(--space-6); }
+    .topbar nav a {
+      color: var(--fg-2); text-decoration: none;
+      font-family: var(--font-display); font-weight: var(--text-nav-weight);
+      font-size: var(--text-nav-size);
+      transition: color var(--duration-base) var(--ease-out);
+    }
+    .topbar nav a:hover { color: var(--fg-1); }
+    .logo-mark { display: inline-flex; align-items: center; height: 36px; }
+    .logo-mark svg { height: 100%; width: auto; display: block; }
+
+    .section { margin-bottom: var(--space-10); }
+    .section-head { margin-bottom: var(--space-5); }
+    .section-head .eyebrow {
+      font-family: var(--font-label); font-weight: var(--text-label-weight);
+      font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+      color: var(--brand); margin-bottom: var(--space-2); display: block;
+    }
+
+    /* Swatch grid */
+    .swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: var(--space-3);
+    }
+    .swatch {
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border-1);
+      background: var(--bg-surface);
+    }
+    .swatch .chip { height: 72px; }
+    .swatch .meta { padding: var(--space-3); }
+    .swatch .name { font-weight: 600; font-size: 13px; color: var(--fg-1); }
+    .swatch .hex  { font-family: ui-monospace, monospace; font-size: 12px; color: var(--fg-2); margin-top: 2px; }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-5);
+    }
+    @media (max-width: 640px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+
+    /* Tokens table */
+    .token-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .token-table th, .token-table td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .token-table th {
+      font-weight: 600;
+      color: var(--fg-2);
+      background: var(--slate-50);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .token-table code {
+      background: var(--slate-50);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       DEMO — delete everything between the DEMO START / DEMO END
+       markers to get a blank starter with tokens + logo ready to go.
+       ============================================================ -->
+  <!-- ===== DEMO START ===== -->
+  <div class="page-shell">
+    <header class="topbar">
+      <!-- ========================================================
+           OFFICIAL HEALTHBRIDGE WORDMARK (inlined SVG)
+           Exact copy from brand source. Orange spark = #f69320.
+           Copy the entire <svg id="hb-logo">...</svg> block to reuse.
+           ======================================================== -->
+      <div class="logo-mark" aria-label="Healthbridge">
+        <svg id="hb-logo" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 998.33 369.72">
+          <g>
+            <g>
+              <path d="m805.78,168.29c-3.96-5.75-11.61-9.51-19.66-9.51-14.82,0-26.43,11.73-26.43,26.69s11.61,26.8,26.43,26.8c7.94,0,15.61-3.74,19.66-9.46v6.3c0,11.98-7.29,19.43-19.01,19.43-8.44,0-15.06-3.8-18.64-10.71l-.26-.49-5.96,4.08.2.39c4.54,8.7,13.53,13.68,24.66,13.68,15.99,0,26.32-10.39,26.32-26.48v-49.06h-7.31v8.34Zm-19.23,37.14c-10.84,0-19.34-8.77-19.34-19.96s8.49-19.85,19.34-19.85,19.66,8.72,19.66,19.85-8.63,19.96-19.66,19.96Z" fill="#0a0300" stroke-width="0"></path>
+              <path d="m680.89,139.72c-2.75,0-4.99,2.23-4.99,4.96s2.24,4.97,4.99,4.97,4.99-2.23,4.99-4.97-2.24-4.96-4.99-4.96Z" fill="#0a0300" stroke-width="0"></path>
+              <path d="m441.21,168.52c-4.06-5.88-11.85-9.74-19.98-9.74-15,0-26.75,11.96-26.75,27.23s11.75,27.33,26.75,27.33c8.04,0,15.83-3.94,19.98-9.96v8.78h7.31v-52.21h-7.31v8.56Zm-19.55,37.98c-11.02,0-19.66-9-19.66-20.49s8.63-20.38,19.66-20.38,19.98,8.95,19.98,20.38-8.78,20.49-19.98,20.49Z" fill="#0a0300" stroke-width="0"></path>
+              <path d="m850.07,158.78c-14.88,0-26.11,11.7-26.11,27.23s11.16,27.33,26.53,27.33c9.87,0,18.41-5.12,22.84-13.69l.23-.44-6.22-3.09-.23.4c-3.9,6.81-9.14,9.98-16.51,9.98-10.46,0-18.61-7.75-19.11-18.08h43.77l.05-.44s.11-1,.11-2.29c0-15.34-10.9-26.91-25.36-26.91Zm-18.44,23.22c.92-9.2,9.03-16.59,18.33-16.59s16.93,6.94,17.9,16.59h-36.23Z" fill="#0a0300" stroke-width="0"></path>
+              <path d="m303.77,158.78c-7.48,0-13.98,3.24-17.73,8.76v-30.92h-7.41v75.54h7.41v-28.29c0-10.41,7.07-18.25,16.44-18.25s15.58,6.5,15.58,16.98v29.57h7.41v-30.31c0-14.02-8.52-23.07-21.71-23.07Z" fill="#0a0300" stroke-width="0"></path>
+              <path d="m361.78,158.78c-14.88,0-26.11,11.7-26.11,27.23s11.16,27.33,26.53,27.33c9.87,0,18.41-5.12,22.84-13.69l.23-.44-6.22-3.09-.23.4c-3.9,6.81-9.14,9.98-16.51,9.98-10.46,0-18.61-7.75-19.11-18.08h43.77l.05-.44s.11-1,.11-2.29c0-15.34-10.9-26.91-25.36-26.91Zm-18.44,23.22c.92-9.2,9.03-16.59,18.33-16.59s16.93,6.94,17.9,16.59h-36.23Z" fill="#0a0300" stroke-width="0"></path>
+              <path d="m666.66,159.1c-6.8,0-13.76,4.13-16.87,9.73v-8.88h-7.31v52.21h7.41v-25.63c0-11.81,6.81-20.06,16.55-20.06,1.24,0,2.07.1,2.08.1l.55.07v-7.38l-.43-.05s-.9-.11-1.99-.11Z" fill="#0a0300" stroke-width="0"></path>
+              <path d="m604.99,158.78c-8.04,0-15.83,3.94-19.98,9.96v-32.11h-7.31v75.54h7.31v-8.56c4.06,5.88,11.85,9.74,19.98,9.74,15,0,26.75-11.96,26.75-27.23s-11.75-27.33-26.75-27.33Zm-.43,47.72c-11.2,0-19.98-8.95-19.98-20.38s8.78-20.49,19.98-20.49,19.66,9,19.66,20.49-8.63,20.38-19.66,20.38Z" fill="#0a0300" stroke-width="0"></path>
+              <path d="m741.7,168.52c-4.06-5.88-11.85-9.74-19.98-9.74-15,0-26.75,11.96-26.75,27.23s11.75,27.33,26.75,27.33c8.04,0,15.83-3.94,19.98-9.96v8.78h7.31v-75.54h-7.31v31.89Zm-19.55,37.98c-11.02,0-19.66-9-19.66-20.49s8.63-20.38,19.66-20.38,19.98,8.95,19.98,20.38-8.78,20.49-19.98,20.49Z" fill="#0a0300" stroke-width="0"></path>
+              <rect x="677.18" y="159.95" width="7.41" height="52.21" fill="#0a0300" stroke-width="0"></rect>
+              <rect x="462.56" y="136.63" width="7.41" height="75.54" fill="#0a0300" stroke-width="0"></rect>
+              <path d="m502.19,206.39c-5.81,0-8.51-2.96-8.51-9.31v-30.4h14.9v-6.74h-14.9v-15.76h-7.41v15.76h-8.25v6.74h8.25v31.25c0,9.79,5.41,15.4,14.85,15.4,3.78,0,6.36-1.08,7.29-1.54l.27-.14v-7.21l-.73.41c-1.77.99-3.82,1.54-5.76,1.54Z" fill="#0a0300" stroke-width="0"></path>
+              <path d="m542.36,158.78c-7.48,0-13.98,3.24-17.73,8.76v-30.92h-7.41v75.54h7.41v-28.29c0-10.41,7.07-18.25,16.44-18.25s15.58,6.5,15.58,16.98v29.57h7.41v-30.31c0-14.02-8.52-23.07-21.71-23.07Z" fill="#0a0300" stroke-width="0"></path>
+            </g>
+            <g>
+              <path d="m184.68,246.48c12.17,0,23.5-3.54,33.06-9.63-9.92-5.23-21.62-7.66-33.06-7.66s-25.09,2.44-33.06,7.66c9.55,6.09,20.89,9.63,33.06,9.63" fill="#0a0300" stroke-width="0"></path>
+              <path d="m154.85,221.25c-10.51-8.63-17.22-21.73-17.22-36.39,0-25.99,21.07-47.06,47.06-47.06s47.06,21.07,47.06,47.06c0,14.66-6.71,27.76-17.22,36.39,5.53,1.2,10.94,2.72,16.21,4.54,9.68-10.88,15.58-25.22,15.58-40.93,0-34.03-27.59-61.62-61.62-61.62s-61.62,27.59-61.62,61.62c0,15.71,5.89,30.05,15.58,40.93,5.27-1.83,10.68-3.35,16.21-4.54" fill="#f69320" stroke-width="0"></path>
+            </g>
+          </g>
+        </svg>
+      </div>
+
+      <nav>
+        <a href="#">Overview</a>
+        <a href="#">Patients</a>
+        <a href="#">Reports</a>
+        <a href="#">Settings</a>
+      </nav>
+
+      <button class="btn btn-primary">Get started</button>
+    </header>
+
+    <!-- ===== Hero ===== -->
+    <section class="section hb-anim-fade-up">
+      <div class="section-head">
+        <span class="eyebrow">Reference & starter</span>
+        <h1 class="hb-title">Healthbridge design system</h1>
+      </div>
+      <p class="hb-body-l" style="color: var(--fg-2); max-width: 620px;">
+        Single-file drop-in for new prototypes. Tokens, the official wordmark,
+        and component classes all live inline. Duplicate this file, delete the
+        demo sections, and start building.
+      </p>
+    </section>
+
+    <!-- ===== Color swatches ===== -->
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">Brand primaries</span>
+        <h2 class="hb-h2">The canonical six</h2>
+      </div>
+      <div class="swatch-grid">
+        <div class="swatch"><div class="chip" style="background:#F7941D"></div><div class="meta"><div class="name">Brand orange</div><div class="hex">#F7941D</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#414042"></div><div class="meta"><div class="name">Charcoal</div><div class="hex">#414042</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#7757EC"></div><div class="meta"><div class="name">Purple</div><div class="hex">#7757EC</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#FF4D00"></div><div class="meta"><div class="name">Burnt orange</div><div class="hex">#FF4D00</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#75EB9E"></div><div class="meta"><div class="name">Bright green</div><div class="hex">#75EB9E</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#000000"></div><div class="meta"><div class="name">Black</div><div class="hex">#000000</div></div></div>
+      </div>
+    </section>
+
+    <!-- ===== Extended palette ===== -->
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">Extended palette</span>
+        <h2 class="hb-h2">Functional colors</h2>
+      </div>
+      <div class="swatch-grid">
+        <div class="swatch"><div class="chip" style="background:#F7941C"></div><div class="meta"><div class="name">orange-100</div><div class="hex">#F7941C</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#DE8519"></div><div class="meta"><div class="name">orange-deep</div><div class="hex">#DE8519</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#FDEAD2"></div><div class="meta"><div class="name">orange-40</div><div class="hex">#FDEAD2</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#0067C5"></div><div class="meta"><div class="name">blue-100 (link)</div><div class="hex">#0067C5</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#008060"></div><div class="meta"><div class="name">green-100 (ok)</div><div class="hex">#008060</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#D82C0D"></div><div class="meta"><div class="name">red-100 (error)</div><div class="hex">#D82C0D</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#FFCE00"></div><div class="meta"><div class="name">yellow-100 (warn)</div><div class="hex">#FFCE00</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#202223"></div><div class="meta"><div class="name">slate-900 (text)</div><div class="hex">#202223</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#6D7175"></div><div class="meta"><div class="name">slate-700</div><div class="hex">#6D7175</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#E6E9EC"></div><div class="meta"><div class="name">slate-300 (border)</div><div class="hex">#E6E9EC</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#F7F6FB"></div><div class="meta"><div class="name">slate-50 (canvas)</div><div class="hex">#F7F6FB</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#FFFFFF; border: 1px solid #E6E9EC;"></div><div class="meta"><div class="name">white</div><div class="hex">#FFFFFF</div></div></div>
+      </div>
+    </section>
+
+    <!-- ===== Typography specimen ===== -->
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">Typography</span>
+        <h2 class="hb-h2">Figtree — type ramp</h2>
+      </div>
+      <div class="hb-card">
+        <div style="display: flex; flex-direction: column; gap: var(--space-5);">
+          <div><div class="hb-body-s" style="color: var(--fg-3); margin-bottom: 4px;">.hb-title · 36/52 · -2px</div><div class="hb-title">Faster, safer care starts here</div></div>
+          <div><div class="hb-body-s" style="color: var(--fg-3); margin-bottom: 4px;">.hb-h1 · 28/36</div><h1 class="hb-h1">Section heading</h1></div>
+          <div><div class="hb-body-s" style="color: var(--fg-3); margin-bottom: 4px;">.hb-h2 · 22/30</div><h2 class="hb-h2">Subsection heading</h2></div>
+          <div><div class="hb-body-s" style="color: var(--fg-3); margin-bottom: 4px;">.hb-h3 · 18/26</div><h3 class="hb-h3">Card heading</h3></div>
+          <div><div class="hb-body-s" style="color: var(--fg-3); margin-bottom: 4px;">.hb-body-l · 18/28</div><p class="hb-body-l">Large body for intro paragraphs and callouts.</p></div>
+          <div><div class="hb-body-s" style="color: var(--fg-3); margin-bottom: 4px;">.hb-body-m · 16/24 · default p</div><p>Default body copy. The quick brown fox jumps over the lazy dog.</p></div>
+          <div><div class="hb-body-s" style="color: var(--fg-3); margin-bottom: 4px;">.hb-body-s · 14/20</div><p class="hb-body-s">Small supporting text and hints.</p></div>
+          <div><div class="hb-body-s" style="color: var(--fg-3); margin-bottom: 4px;">.hb-label · 18/28 · 6px tracking</div><div class="hb-label">Featured</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Components ===== -->
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">Components</span>
+        <h2 class="hb-h2">Buttons, inputs, pills</h2>
+      </div>
+
+      <div class="two-col">
+        <div class="hb-card">
+          <h3 class="hb-h3" style="margin-bottom: var(--space-4);">Buttons &amp; pills</h3>
+          <div style="display:flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4);">
+            <button class="btn btn-primary">Primary action</button>
+            <button class="btn btn-secondary">Secondary</button>
+            <button class="btn btn-ghost">Ghost</button>
+            <button class="btn btn-dark">Dark</button>
+          </div>
+          <div style="display:flex; flex-wrap: wrap; gap: var(--space-2);">
+            <span class="hb-pill">Default</span>
+            <span class="hb-pill info">Info</span>
+            <span class="hb-pill success">Success</span>
+            <span class="hb-pill warning">Warning</span>
+            <span class="hb-pill danger">Danger</span>
+          </div>
+        </div>
+
+        <div class="hb-card">
+          <h3 class="hb-h3" style="margin-bottom: var(--space-4);">Form fields</h3>
+          <div style="display: flex; flex-direction: column; gap: var(--space-4);">
+            <label class="hb-field">
+              <span>Practice name</span>
+              <div class="hb-input">
+                <input type="text" placeholder="e.g. Pinnacle Health &amp; Wellness">
+              </div>
+              <span class="hb-hint">As it should appear on invoices.</span>
+            </label>
+            <label class="hb-field">
+              <span>Province</span>
+              <div class="hb-input">
+                <select>
+                  <option>Gauteng</option>
+                  <option>Western Cape</option>
+                  <option>KwaZulu-Natal</option>
+                  <option>Eastern Cape</option>
+                </select>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Quick-reference token table ===== -->
+    <section class="section">
+      <div class="section-head">
+        <span class="eyebrow">Reference</span>
+        <h2 class="hb-h2">Common tokens at a glance</h2>
+      </div>
+      <div class="hb-card" style="padding: 0; overflow: hidden;">
+        <table class="token-table">
+          <thead><tr><th>Token</th><th>Value</th><th>Use for</th></tr></thead>
+          <tbody>
+            <tr><td><code>--brand</code></td><td>#F7941C</td><td>Primary buttons, focus rings, accent links</td></tr>
+            <tr><td><code>--brand-hover</code></td><td>#DE8519</td><td>Primary hover/pressed states</td></tr>
+            <tr><td><code>--fg-1</code></td><td>#202223</td><td>Primary body text</td></tr>
+            <tr><td><code>--fg-2</code></td><td>#6D7175</td><td>Secondary / label text</td></tr>
+            <tr><td><code>--bg-canvas</code></td><td>#F4F4F5</td><td>Page background</td></tr>
+            <tr><td><code>--bg-surface</code></td><td>#FFFFFF</td><td>Cards, shells, modals</td></tr>
+            <tr><td><code>--border-1</code></td><td>#E6E9EC</td><td>Default card/input borders</td></tr>
+            <tr><td><code>--radius-lg</code></td><td>16px</td><td>Cards</td></tr>
+            <tr><td><code>--radius-md</code></td><td>10px</td><td>Inputs, buttons (use 12px for larger)</td></tr>
+            <tr><td><code>--radius-pill</code></td><td>999px</td><td>Tags, pills, chips</td></tr>
+            <tr><td><code>--shadow-1</code></td><td>soft</td><td>Resting cards</td></tr>
+            <tr><td><code>--shadow-2</code></td><td>lifted</td><td>Elevated cards, popovers</td></tr>
+            <tr><td><code>--shadow-focus</code></td><td>orange glow</td><td>Focus rings (3px rgba orange)</td></tr>
+            <tr><td><code>--space-6</code></td><td>28px</td><td>Default card padding</td></tr>
+            <tr><td><code>--duration-base</code></td><td>180ms</td><td>Standard transitions</td></tr>
+            <tr><td><code>--ease-out</code></td><td>cubic-bezier(.2,.8,.2,1)</td><td>Standard easing</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer style="border-top: 1px solid var(--border-subtle); padding: var(--space-6) 0; margin-top: var(--space-10);">
+      <p class="hb-body-s">Healthbridge design system · HBDS v1 · single-file reference</p>
+    </footer>
+  </div>
+  <!-- ===== DEMO END ===== -->
+
+</body>
+</html>
