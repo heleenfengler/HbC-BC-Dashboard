@@ -60,6 +60,10 @@ def rows_from_sheet(df: pd.DataFrame) -> list[tuple[str, str]]:
 def extra_portal_links() -> list[tuple[str, str]]:
     """Stable entry points not duplicated on the Toolkit sheet."""
     return [
+        (
+            "BC Knowledge AI (NotebookLM)",
+            "https://notebooklm.google.com/notebook/3d1d83d8-0459-47b3-a696-55e1e26eed22?pli=1",
+        ),
         ("Healthbridge YouTube", "https://www.youtube.com/@HealthbridgeSA"),
         ("Clinical Assistant overview (web)", "https://www.healthbridge.co.za/clinical-assistant/"),
         ("Healthbridge corporate site", "https://www.healthbridge.co.za/"),
