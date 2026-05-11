@@ -249,6 +249,7 @@
 
   function bctkResourceType(url) {
     var u = String(url || '').toLowerCase();
+    if (u.indexOf('notebooklm.google.com') !== -1 || u.indexOf('chatgpt.com') !== -1 || u.indexOf('chat.openai.com') !== -1 || u.indexOf('claude.ai') !== -1 || u.indexOf('gemini.google.com') !== -1) return 'ai';
     if (u.indexOf('vimeo.com') !== -1 || u.indexOf('youtube.com') !== -1 || u.indexOf('youtu.be') !== -1) return 'video';
     if (u.indexOf('help.healthbridgeclinical.co.za') !== -1) return 'article';
     if (u.indexOf('tablet.mymps.co.za') !== -1) return 'portal';
@@ -265,6 +266,7 @@
   }
 
   function bctkResourceKindLabel(t) {
+    if (t === 'ai') return 'AI tool';
     if (t === 'video') return 'Video';
     if (t === 'article') return 'Help article';
     if (t === 'portal') return 'Portal';
@@ -272,6 +274,9 @@
   }
 
   function bctkResourceIconSvg(t) {
+    if (t === 'ai') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.6 4.1L18 8.6l-4.4 1.6L12 14.4 10.4 10.2 6 8.6l4.4-1.6L12 3z" fill="currentColor" stroke="none"/><path d="M18.5 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z" fill="currentColor" stroke="none"/><path d="M5.5 16l.55 1.4 1.4.55-1.4.55L5.5 20l-.55-1.5-1.4-.55 1.4-.55L5.5 16z" fill="currentColor" stroke="none"/></svg>';
+    }
     if (t === 'video') {
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>';
     }
