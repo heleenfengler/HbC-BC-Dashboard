@@ -6,7 +6,7 @@ window.BCTK_RESOURCES = [
   },
   {
     "title": "Healthbridge YouTube",
-    "url": "https://www.youtube.com/@HealthbridgeSA"
+    "url": "https://www.youtube.com/channel/UC2X36DjuYAuvjlGcoZ7Ih8w"
   },
   {
     "title": "Clinical Assistant overview (web)",

@@ -64,7 +64,7 @@ def extra_portal_links() -> list[tuple[str, str]]:
             "BC Knowledge AI (NotebookLM)",
             "https://notebooklm.google.com/notebook/3d1d83d8-0459-47b3-a696-55e1e26eed22?pli=1",
         ),
-        ("Healthbridge YouTube", "https://www.youtube.com/@HealthbridgeSA"),
+        ("Healthbridge YouTube", "https://www.youtube.com/channel/UC2X36DjuYAuvjlGcoZ7Ih8w"),
         ("Clinical Assistant overview (web)", "https://www.healthbridge.co.za/clinical-assistant/"),
         ("Healthbridge corporate site", "https://www.healthbridge.co.za/"),
         ("HB Clinical Help Center (home)", "https://help.healthbridgeclinical.co.za/en"),
