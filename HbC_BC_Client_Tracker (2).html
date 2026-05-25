@@ -166,8 +166,8 @@ function trackFilterChange(){
   _filterTrackTimer = setTimeout(() => {
     const q = (document.getElementById('f-q')?.value || '').trim();
     trackUsageEvent('filter_change', CURRENT_TAB, {
-      bc: document.getElementById('f-bc')?.value || '',
-      team: document.getElementById('f-team')?.value || '',
+      bc: getMultiFilterValues('f-bc').join('|'),
+      team: getMultiFilterValues('f-team').join('|'),
       pma: document.getElementById('f-pma')?.value || '',
       engagement: document.getElementById('f-eng')?.value || '',
       hasQuery: !!q,
@@ -349,11 +349,27 @@ function looksLikeProductTier(s){
   return t.includes('healthbridge') && !['active','trial','in progress','inprogress','inactive','paused','on hold','onhold','cancelled','canceled','pending cancellation','rejected','suspended','ex-client','system cancelled','archive'].includes(t);
 }
 
+const PERSONA_DISPLAY_LABELS = new Set([
+  'power clinical user', 'active clinical user', 'low clinical user', 'inactive', 'dormant',
+]);
+
+function looksLikePersonaLabel(s){
+  return PERSONA_DISPLAY_LABELS.has(String(s || '').trim().toLowerCase());
+}
+
+function isValidCompanyStatusValue(s){
+  const v = String(s || '').trim();
+  if (!v || v.toLowerCase() === 'unknown' || looksLikeProductTier(v) || looksLikePersonaLabel(v)) return false;
+  return true;
+}
+
 function companyStatusLabel(p){
   if (!p) return '—';
-  const c = (p.companyStatus || p.status || '').trim();
-  if (!c || c.toLowerCase() === 'unknown' || looksLikeProductTier(c)) return '—';
-  return c;
+  const c = (p.companyStatus || '').trim();
+  if (isValidCompanyStatusValue(c)) return c;
+  const s = (p.status || '').trim();
+  if (isValidCompanyStatusValue(s)) return s;
+  return '—';
 }
 
 function practiceHasExplicitInactiveStatus(){
@@ -482,10 +498,7 @@ function applySharedKpiStrip(ids){
 
 /** Practices in filter for encounters table (optional team sub-filter). */
 function practicesForEncountersView(){
-  const dk = buildDashboardKpis();
-  const team = (document.getElementById('enc-team-filter') || {}).value || '';
-  if (!team) return dk.kpiSet;
-  return dk.kpiSet.filter(p => p.team === team);
+  return buildDashboardKpis().kpiSet;
 }
 
 /** Subtitle for Active treating providers KPIs (trailing ≤30d activity window in slicer, provDaily). */
@@ -557,6 +570,13 @@ function encounterTableProviderCountHtml(p){
     return String(roster);
   }
   return `${shown}<span style="font-size:10px;color:var(--slate-600);font-variant-numeric:tabular-nums"> / ${roster}</span>`;
+}
+
+function practiceEncAvgPerDayHtml(p){
+  const days = slicerDaySpan();
+  if (!days || !p || !p.enc) return '—';
+  const avg = p.enc / days;
+  return avg >= 100 ? fmt(Math.round(avg)) : avg.toFixed(1);
 }
 
 function bcViewProviderCountHtml(p){
@@ -814,25 +834,91 @@ function switchTab(name, el){
   if (TRACKING_ENABLED) trackUsageEvent('tab_view', name, { label: el ? el.textContent.trim() : name });
 }
 
+
+/* Multi-select BC / team filters */
+function toggleMsPanel(id){
+  const panel = document.getElementById(id + '-panel');
+  if (!panel) return;
+  const open = panel.classList.toggle('open');
+  document.querySelectorAll('.ms-panel.open').forEach(p => {
+    if (p !== panel) p.classList.remove('open');
+  });
+  if (open) panel.classList.add('open');
+}
+
+function closeMsPanels(){
+  document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+}
+
+function getMultiFilterValues(id){
+  const root = document.getElementById(id + '-options');
+  if (!root) return [];
+  const vals = [];
+  root.querySelectorAll('input[type=checkbox]:checked').forEach(cb => {
+    if (cb.value) vals.push(cb.value);
+  });
+  return vals;
+}
+
+function updateMsButton(id, placeholder){
+  const btn = document.getElementById(id + '-btn');
+  if (!btn) return;
+  const vals = getMultiFilterValues(id);
+  if (!vals.length){
+    btn.textContent = placeholder;
+    return;
+  }
+  if (vals.length === 1) btn.textContent = vals[0].length > 28 ? vals[0].slice(0, 26) + '…' : vals[0];
+  else btn.textContent = vals.length + ' selected';
+}
+
+function onMsFilterChange(id, placeholder){
+  updateMsButton(id, placeholder);
+  applyFilters();
+}
+
+function clearMsFilter(id, placeholder){
+  const root = document.getElementById(id + '-options');
+  if (!root) return;
+  root.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; });
+  updateMsButton(id, placeholder);
+}
+
+function selectAllMsFilter(id, placeholder){
+  const root = document.getElementById(id + '-options');
+  if (!root) return;
+  root.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = true; });
+  updateMsButton(id, placeholder);
+}
+
+function populateMultiFilter(id, list, placeholder){
+  const root = document.getElementById(id + '-options');
+  if (!root) return;
+  root.innerHTML = '';
+  list.forEach(v => {
+    const lbl = document.createElement('label');
+    lbl.className = 'ms-opt';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = v;
+    cb.addEventListener('change', () => onMsFilterChange(id, placeholder));
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(v));
+    root.appendChild(lbl);
+  });
+  updateMsButton(id, placeholder);
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms')) closeMsPanels();
+});
+
 /* ============================================================
    Filters
    ============================================================ */
 function populateFilters(){
-  const bcSel = document.getElementById('f-bc');
-  DATA.lists.bcs.forEach(b => {
-    const opt = document.createElement('option');
-    opt.value = b; opt.textContent = b;
-    bcSel.appendChild(opt);
-  });
-  const teamSel = document.getElementById('f-team');
-  const encTeamSel = document.getElementById('enc-team-filter');
-  DATA.lists.teams.forEach(t => {
-    const o1 = document.createElement('option');
-    o1.value = t; o1.textContent = t;
-    teamSel.appendChild(o1);
-    const o2 = o1.cloneNode(true);
-    encTeamSel.appendChild(o2);
-  });
+  populateMultiFilter('f-bc', DATA.lists.bcs || [], 'All BCs');
+  populateMultiFilter('f-team', DATA.lists.teams || [], 'All teams');
 }
 
 function normalizeIdDigits(v){
@@ -843,8 +929,8 @@ function normalizeIdDigits(v){
 }
 
 function applyFilters(){
-  const bc = document.getElementById('f-bc').value;
-  const team = document.getElementById('f-team').value;
+  const bcVals = getMultiFilterValues('f-bc');
+  const teamVals = getMultiFilterValues('f-team');
   const pma = document.getElementById('f-pma').value;
   const eng = document.getElementById('f-eng').value;
   const qRaw = document.getElementById('f-q').value.trim();
@@ -859,8 +945,8 @@ function applyFilters(){
   const qIsKnownBpn = !!(qNorm && bpnNormSet.has(qNorm));
 
   FC = _sliced.filter(p => {
-    if (bc && p.bc !== bc) return false;
-    if (team && p.team !== team) return false;
+    if (bcVals.length && !bcVals.includes(p.bc || '')) return false;
+    if (teamVals.length && !teamVals.includes(p.team || '')) return false;
     if (pma && p.pma !== pma) return false;
     if (eng && p.engagement !== eng) return false;
     if (q){
@@ -908,8 +994,8 @@ function applyFilters(){
 }
 
 function clearFilters(){
-  document.getElementById('f-bc').value = '';
-  document.getElementById('f-team').value = '';
+  clearMsFilter('f-bc', 'All BCs');
+  clearMsFilter('f-team', 'All teams');
   document.getElementById('f-pma').value = '';
   document.getElementById('f-eng').value = '';
   document.getElementById('f-q').value = '';
@@ -1615,22 +1701,23 @@ function renderEncTable(){
         <td>${i+1}</td>
         <td><strong>${escapeHtml(p.name)}</strong></td>
         <td><code style="font-size:11px;font-family:var(--font-mono);color:var(--slate-700)">${escapeHtml(p.bpn)}</code></td>
+        <td>${encounterTableProviderCountHtml(p)}</td>
         <td>${escapeHtml(p.bc) || '—'}</td>
         <td style="font-size:11px;color:var(--slate-700)">${escapeHtml(p.team) || '—'}</td>
         <td>${pmaBadge(p.pma)}</td>
         <td>${versionChip(p.appVer, DATA.metadata.LatestVersion, p.onLatest)}</td>
         <td>${personaBadge(practicePersonaForDisplay(p))}</td>
         <td><strong>${fmtFull(p.enc)}</strong></td>
-        <td>${encounterTableProviderCountHtml(p)}</td>
+        <td style="text-align:right">${practiceEncAvgPerDayHtml(p)}</td>
         <td>${companyStatusBadge(companyStatusLabel(p))}</td>
       </tr>
       <tr class="prov-detail-row" id="${rowId}" style="display:none">
-        <td class="prov-detail-cell" colspan="11">${provPanelHtml}</td>
+        <td class="prov-detail-cell" colspan="12">${provPanelHtml}</td>
       </tr>`;
   }).join('');
 
   document.getElementById('enc-tbody').innerHTML = rows
-    || '<tr><td colspan="11" class="empty"><p>No clients in current filter</p></td></tr>';
+    || '<tr><td colspan="12" class="empty"><p>No clients in current filter</p></td></tr>';
 }
 
 function toggleEncRow(id){
@@ -3134,6 +3221,19 @@ header{background:var(--ch);color:#fff;position:sticky;top:0;z-index:200;box-sha
 .fc-btn:hover{background:var(--or);color:#fff;border-color:var(--or);}
 .fr{font-size:12px;color:var(--mu);font-weight:600;white-space:nowrap;}
 .sep{width:1px;height:22px;background:var(--bd);}
+/* Multi-select filters */
+.ms{position:relative;min-width:140px;}
+.ms-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1.5px solid var(--bd);border-radius:var(--r-sm);font-family:'Figtree',sans-serif;font-size:13px;background:var(--wh);color:var(--ch);outline:none;transition:border .15s;height:34px;min-width:140px;cursor:pointer;}
+.ms-btn:focus{border-color:var(--or);}
+.ms-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:400;min-width:240px;max-height:300px;overflow:auto;background:var(--wh);border:1.5px solid var(--bd);border-radius:var(--r-sm);box-shadow:var(--sh-2);padding:6px 0;}
+.ms-panel.open{display:block;}
+.ms-actions{display:flex;gap:6px;padding:6px 10px 8px;border-bottom:1px solid var(--bd);}
+.ms-act{padding:4px 10px;font-size:11px;font-weight:700;border:1px solid var(--bd);border-radius:6px;background:var(--sf2);cursor:pointer;font-family:inherit;color:var(--ch);}
+.ms-act:hover{background:var(--or);color:#fff;border-color:var(--or);}
+.ms-opt{display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:13px;cursor:pointer;color:var(--ch);}
+.ms-opt:hover{background:var(--sf2);}
+.ms-opt input{margin:0;accent-color:var(--or);}
+
 
 /* MAIN */
 main{flex:1;padding:22px 28px;max-width:1440px;margin:0 auto;width:100%;}
@@ -3580,8 +3680,24 @@ tr:hover td{background:#fafaf8;}
   <!-- GLOBAL FILTER BAR -->
   <div class="gfb">
     <label>Filter</label>
-    <select class="fs" id="f-bc" onchange="applyFilters()"><option value="">All BCs</option></select>
-    <select class="fs" id="f-team" onchange="applyFilters()"><option value="">All teams</option></select>
+    <div class="ms" id="f-bc-wrap">
+      <button type="button" class="ms-btn" id="f-bc-btn" onclick="toggleMsPanel('f-bc')">All BCs</button>
+      <div class="ms-panel" id="f-bc-panel">
+        <div class="ms-actions">
+          <button type="button" class="ms-act" onclick="clearMsFilter('f-bc','All BCs');applyFilters()">All</button>
+        </div>
+        <div class="ms-options" id="f-bc-options"></div>
+      </div>
+    </div>
+    <div class="ms" id="f-team-wrap">
+      <button type="button" class="ms-btn" id="f-team-btn" onclick="toggleMsPanel('f-team')">All teams</button>
+      <div class="ms-panel" id="f-team-panel">
+        <div class="ms-actions">
+          <button type="button" class="ms-act" onclick="clearMsFilter('f-team','All teams');applyFilters()">All</button>
+        </div>
+        <div class="ms-options" id="f-team-options"></div>
+      </div>
+    </div>
     <select class="fs" id="f-pma" onchange="applyFilters()"><option value="">All PMA</option><option value="myMPS">myMPS</option><option value="Nova">Nova</option></select>
     <select class="fs" id="f-eng" onchange="applyFilters()"><option value="">All engagement</option><option value="encounter">Encounter</option><option value="feature_only">Feature-only</option><option value="inactive">Inactive</option></select>
     <div class="sep"></div>
@@ -3833,12 +3949,7 @@ tr:hover td{background:#fafaf8;}
         <div class="chw h280"><canvas id="c-encounter-trend"></canvas></div>
       </div>
       <div class="cfull card">
-        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px">
-          <div class="ct" style="margin:0">Client encounter detail</div>
-          <select id="enc-team-filter" onchange="renderEncounters()" style="font-size:12px;padding:4px 8px;border:1px solid var(--bd);border-radius:6px;background:#fff;color:var(--ch)">
-            <option value="">All teams</option>
-          </select>
-        </div>
+        <div class="ct" style="margin-bottom:12px">Client encounter detail</div>
         <div class="cs" style="margin-top:0">Filtered set · ranked by 30-day encounter volume · BPN, TPN and treating providers included</div>
         <div class="tw"><table>
           <thead><tr><th>#</th><th>Practice name</th><th>BPN</th><th>Treating providers (TPN)</th><th>BC</th><th>Team</th><th>PMA</th><th>App version</th><th>Persona</th><th id="enc-th-enc">Enc (full)</th><th>Avg/day</th><th>Status</th></tr></thead>
