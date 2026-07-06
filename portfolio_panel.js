@@ -576,7 +576,7 @@
         '</div>' +
         showAllBtn +
       '</div>' +
-      '<div class="pf-mover-grid-wrap">' +
+      '<div class="pf-mover-scroll-block">' +
         '<div class="pf-mover-grid">' +
           '<div class="pf-mover-col"><div class="pf-mover-title pf-delta up">Top improving · by ' + escapeHtml(rankLabel) + '</div>' +
             '<table class="pf-mover-table">' +
