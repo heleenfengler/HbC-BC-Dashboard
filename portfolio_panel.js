@@ -576,15 +576,17 @@
         '</div>' +
         showAllBtn +
       '</div>' +
-      '<div class="pf-mover-grid">' +
-        '<div><div class="pf-mover-title pf-delta up">Top improving · by ' + escapeHtml(rankLabel) + '</div>' +
-          '<div class="pf-mover-scroll tw"><table class="pf-mover-table">' +
-          dualMoverTableHead(metric) +
-          '<tbody>' + dualMoverRows(improving, MOVER_LIMIT, showAll, metric) + '</tbody></table></div></div>' +
-        '<div><div class="pf-mover-title pf-delta down">Top declining · by ' + escapeHtml(rankLabel) + '</div>' +
-          '<div class="pf-mover-scroll tw"><table class="pf-mover-table">' +
-          dualMoverTableHead(metric) +
-          '<tbody>' + dualMoverRows(declining, MOVER_LIMIT, showAll, metric) + '</tbody></table></div></div>' +
+      '<div class="pf-mover-grid-wrap">' +
+        '<div class="pf-mover-grid">' +
+          '<div class="pf-mover-col"><div class="pf-mover-title pf-delta up">Top improving · by ' + escapeHtml(rankLabel) + '</div>' +
+            '<table class="pf-mover-table">' +
+            dualMoverTableHead(metric) +
+            '<tbody>' + dualMoverRows(improving, MOVER_LIMIT, showAll, metric) + '</tbody></table></div>' +
+          '<div class="pf-mover-col"><div class="pf-mover-title pf-delta down">Top declining · by ' + escapeHtml(rankLabel) + '</div>' +
+            '<table class="pf-mover-table">' +
+            dualMoverTableHead(metric) +
+            '<tbody>' + dualMoverRows(declining, MOVER_LIMIT, showAll, metric) + '</tbody></table></div>' +
+        '</div>' +
       '</div>' +
       (hasMore
         ? '<div class="pf-mover-foot">Showing ' + shownImp + ' improving · ' + shownDec + ' declining' +
