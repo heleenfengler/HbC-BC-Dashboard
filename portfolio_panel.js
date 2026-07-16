@@ -308,20 +308,28 @@
 
 
   function renderMomentumChart(series) {
-
+    // Must use the shared `charts` registry from index.html (also exposed as window.charts).
     if (typeof killChart === 'function') killChart('pf-momentum');
+    else if (typeof charts !== 'undefined' && charts['pf-momentum']) {
+      try { charts['pf-momentum'].destroy(); } catch (e) {}
+      delete charts['pf-momentum'];
+    }
 
     const canvas = document.getElementById('c-pf-momentum');
-
     if (!canvas || !window.Chart || !series.length) return;
 
+    // Destroy any orphan Chart.js instance left on this canvas.
+    if (typeof Chart.getChart === 'function') {
+      const orphan = Chart.getChart(canvas);
+      if (orphan) {
+        try { orphan.destroy(); } catch (e) {}
+      }
+    }
+
     if (typeof applyChartDefaults === 'function') applyChartDefaults();
-
     const ctx = canvas.getContext('2d');
-
-    window.charts = window.charts || {};
-
-    window.charts['pf-momentum'] = new Chart(ctx, {
+    const registry = (typeof charts !== 'undefined') ? charts : (window.charts = window.charts || {});
+    registry['pf-momentum'] = new Chart(ctx, {
 
       type: 'line',
 
@@ -533,7 +541,7 @@
       const e = row.enc;
       const f = row.feat;
       return '<tr class="pf-action-row" onclick="portfolioFocusPractice(\'' + escapeHtmlAttr(String(row.p.bpn)) + '\')" style="cursor:pointer">' +
-        '<td><strong>' + escapeHtml(row.p.name) + '</strong></td>' +
+        '<td><strong>' + (typeof practiceDisplayName === 'function' ? escapeHtml(practiceDisplayName(row.p)) : escapeHtml(row.p.name)) + '</strong></td>' +
         '<td class="' + (encHi ? 'pf-rank-col' : '') + '" style="text-align:right">' + fmtFull(e.recent) + '</td>' +
         '<td style="text-align:right;color:var(--mu)">' + fmtFull(e.prior) + '</td>' +
         fmtDeltaCell(e.delta, encHi) +
