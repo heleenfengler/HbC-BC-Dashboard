@@ -51,6 +51,8 @@ function aggregateBpnDailyAtDateIdx(di){
   if (!bd) return null;
   for (const k of kpiDailyBpnKeys()){
     const recs = bd[k];
+    // Ownership-only sites (no telemetry) have no bpnDaily rows — skip safely.
+    if (!recs || !recs.length) continue;
     let lo = 0, hi = recs.length - 1, found = null;
     while (lo <= hi){
       const mid = (lo + hi) >> 1;
@@ -100,7 +102,7 @@ const ALL_FEAT_CATS = [
 const MEANINGFUL_FEAT_CATS = ALL_FEAT_CATS.filter(c => c !== '9. Noise / Passive');
 const FEAT_CATS = ALL_FEAT_CATS;
 let SELECTED_FEAT_CATS = [...FEAT_CATS];
-const charts = {};     // chart.js instances
+var charts = window.charts = window.charts || {};  // shared Chart.js registry (lexical + window)
 /** Single shared login — data refresh is via generate_dashboard_data.py (not this UI). */
 const DASHBOARD_PASSWORD = 'HbC@BC2026';
 const SESSION_KEY = 'hbc_dashboard_ok';
@@ -554,6 +556,22 @@ function escapeHtml(s){
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+/** Prefer company name; if missing/numeric-only, use first treating provider or Practice {BPN}. */
+function practiceDisplayName(p){
+  if (!p) return '-';
+  const raw = String(p.name || '').trim();
+  const bpn = p.bpn != null ? String(p.bpn) : '';
+  const looksNumeric = !!raw && /^\d+$/.test(raw);
+  if (raw && !looksNumeric) return raw;
+  const provs = p.providers || [];
+  for (const pr of provs){
+    const n = String(pr.name || '').trim();
+    if (n && !/^\d+$/.test(n) && !/^Provider\s/i.test(n)) return n;
+  }
+  if (bpn) return 'Practice ' + bpn;
+  return raw || '-';
+}
+
 /** For HTML attribute values (e.g. data-prov-key). */
 function escapeHtmlAttr(s){
   if (s === null || s === undefined) return '';
@@ -1004,18 +1022,23 @@ function applyFilters(){
     : `Showing <strong>${fmtFull(FC.length)}</strong> of ${fmtFull(all)} clients`;
   document.getElementById('filter-result').innerHTML = txt;
 
-  // Re-render current tab
-  if (CURRENT_TAB === 'exec') renderExec();
-  else if (CURRENT_TAB === 'overview') renderOverview();
-  else if (CURRENT_TAB === 'encounters') renderEncounters();
-  else if (CURRENT_TAB === 'features') renderFeatures();
-  else if (CURRENT_TAB === 'bcview') renderBCView();
-  else if (CURRENT_TAB === 'anomalies') renderAnomalies();
-  // defs tab is static — no data-driven re-render needed
+  // Re-render current tab (badge/labels still update if a chart render fails)
+  try {
+    if (CURRENT_TAB === 'exec') renderExec();
+    else if (CURRENT_TAB === 'overview') renderOverview();
+    else if (CURRENT_TAB === 'encounters') renderEncounters();
+    else if (CURRENT_TAB === 'features') renderFeatures();
+    else if (CURRENT_TAB === 'bcview') renderBCView();
+    else if (CURRENT_TAB === 'anomalies') renderAnomalies();
+    else if (CURRENT_TAB === 'qa' && typeof renderQA === 'function') renderQA();
+  } catch (err) {
+    console.error('Dashboard render failed for tab ' + CURRENT_TAB + ':', err);
+  }
 
   // Update anomaly tab badge based on filtered set
   const anomCount = computeAnomCounts(fcForKpiStats()).total;
-  document.getElementById('anom-tab-count').textContent = anomCount;
+  const anomEl = document.getElementById('anom-tab-count');
+  if (anomEl) anomEl.textContent = anomCount;
   updateSlicerDependentLabels();
   trackFilterChange();
 }
@@ -1407,7 +1430,7 @@ function renderBCPortfolioCards(set){
 
       const rowsHtml = prs.sort((a,b) => b.enc - a.enc).map(p => `
         <tr>
-          <td><strong>${escapeHtml(p.name)}</strong>${p.providerCount > 0 ? ` <span style="color:var(--slate-700);font-size:11px">· ${p.providerCount} prov.</span>` : ''}</td>
+          <td><strong>${escapeHtml(practiceDisplayName(p))}</strong>${p.providerCount > 0 ? ` <span style="color:var(--slate-700);font-size:11px">· ${p.providerCount} prov.</span>` : ''}</td>
           <td><code style="font-size:11px;font-family:var(--font-mono);color:var(--slate-700)">${escapeHtml(p.bpn)}</code></td>
           <td>${pmaBadge(p.pma)}</td>
           <td>${versionChip(p.appVer, DATA.metadata.LatestVersion, p.onLatest)}</td>
@@ -1729,7 +1752,7 @@ function renderEncTable(){
     return `
       <tr class="enc-row" onclick="toggleEncRow('${rowId}')" style="cursor:pointer">
         <td>${i+1}</td>
-        <td><strong>${escapeHtml(p.name)}</strong></td>
+        <td><strong>${escapeHtml(practiceDisplayName(p))}</strong></td>
         <td><code style="font-size:11px;font-family:var(--font-mono);color:var(--slate-700)">${escapeHtml(p.bpn)}</code></td>
         <td>${encounterTableProviderCountHtml(p)}</td>
         <td>${escapeHtml(p.bc) || '—'}</td>
@@ -2000,9 +2023,9 @@ function renderBCView(){
     } else {
       let provTitle;
       if (!SLICER || !SLICER.dates || !SLICER.dates.length || (typeof slicerIsFullRange === 'function' && slicerIsFullRange())) {
-        provTitle = `${escapeHtml(p.name)} · ${provRoster} treating provider${provRoster === 1 ? '' : 's'} · click View features for per-provider breakdown`;
+        provTitle = `${escapeHtml(practiceDisplayName(p))} · ${provRoster} treating provider${provRoster === 1 ? '' : 's'} · click View features for per-provider breakdown`;
       } else {
-        provTitle = `${escapeHtml(p.name)} · ${provShown} with activity in selected range · ${provRoster} in full bundle · click View features for breakdown`;
+        provTitle = `${escapeHtml(practiceDisplayName(p))} · ${provShown} with activity in selected range · ${provRoster} in full bundle · click View features for breakdown`;
       }
       provPanelHtml = `
       <div class="prov-panel">
@@ -2016,7 +2039,7 @@ function renderBCView(){
     const rid = 'bv-' + i;
     return `
       <tr class="bc-row" onclick="toggleEncRow('${rid}')" style="cursor:pointer">
-        <td><strong>${escapeHtml(p.name)}</strong></td>
+        <td><strong>${escapeHtml(practiceDisplayName(p))}</strong></td>
         <td><code style="font-size:11px;font-family:var(--font-mono);color:var(--slate-700)">${escapeHtml(p.bpn)}</code></td>
         <td style="text-align:center">${bcViewProviderCountHtml(p)}</td>
         <td>${p.bc ? escapeHtml(p.bc) : '<span class="badge b-no-bc">No BC</span>'}</td>

@@ -50,6 +50,8 @@ function aggregateBpnDailyAtDateIdx(di, bpnKeys){
   const keys = bpnKeys || kpiDailyBpnKeys();
   for (const k of keys){
     const recs = bd[k];
+    // Ownership-only sites (no telemetry) have no bpnDaily rows — skip safely.
+    if (!recs || !recs.length) continue;
     let lo = 0, hi = recs.length - 1, found = null;
     while (lo <= hi){
       const mid = (lo + hi) >> 1;
@@ -108,7 +110,7 @@ const FEAT_CATS = ALL_FEAT_CATS;
 let SELECTED_FEAT_CATS = [...FEAT_CATS];
 /** Features tab period chart: null = monthly; YYYY-MM = weekly drill-down for that month. */
 let FEAT_PERIOD_MONTH = null;
-const charts = {};     // chart.js instances
+var charts = window.charts = window.charts || {};  // shared Chart.js registry (lexical + window)
 /** Single shared login — data refresh is via generate_dashboard_data.py (not this UI). */
 const DASHBOARD_PASSWORD = 'HbC@BC2026';
 const SESSION_KEY = 'hbc_dashboard_ok';
@@ -575,6 +577,21 @@ function escapeHtml(s){
   return String(s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+/** Prefer company name; if missing/numeric-only, use first treating provider or Practice {BPN}. */
+function practiceDisplayName(p){
+  if (!p) return '-';
+  const raw = String(p.name || '').trim();
+  const bpn = p.bpn != null ? String(p.bpn) : '';
+  const looksNumeric = !!raw && /^\d+$/.test(raw);
+  if (raw && !looksNumeric) return raw;
+  const provs = p.providers || [];
+  for (const pr of provs){
+    const n = String(pr.name || '').trim();
+    if (n && !/^\d+$/.test(n) && !/^Provider\s/i.test(n)) return n;
+  }
+  if (bpn) return 'Practice ' + bpn;
+  return raw || '-';
 }
 /** For HTML attribute values (e.g. data-prov-key). */
 function escapeHtmlAttr(s){
@@ -1760,19 +1777,24 @@ function applyFilters(){
     : `Showing <strong>${fmtFull(FC.length)}</strong> of ${fmtFull(all)} clients`;
   document.getElementById('filter-result').innerHTML = txt;
 
-  // Re-render current tab
-  if (CURRENT_TAB === 'exec') renderExec();
-  else if (CURRENT_TAB === 'overview') renderOverview();
-  else if (CURRENT_TAB === 'encounters') renderEncounters();
-  else if (CURRENT_TAB === 'features') renderFeatures();
-  else if (CURRENT_TAB === 'bcview') renderBCView();
-  else if (CURRENT_TAB === 'anomalies') renderAnomalies();
-  else if (CURRENT_TAB === 'qa' && typeof renderQA === 'function') renderQA();
-  // defs tab is static — no data-driven re-render needed
+  // Re-render current tab (badge/labels still update if a chart render fails)
+  try {
+    if (CURRENT_TAB === 'exec') renderExec();
+    else if (CURRENT_TAB === 'overview') renderOverview();
+    else if (CURRENT_TAB === 'encounters') renderEncounters();
+    else if (CURRENT_TAB === 'features') renderFeatures();
+    else if (CURRENT_TAB === 'bcview') renderBCView();
+    else if (CURRENT_TAB === 'anomalies') renderAnomalies();
+    else if (CURRENT_TAB === 'qa' && typeof renderQA === 'function') renderQA();
+    // defs tab is static — no data-driven re-render needed
+  } catch (err) {
+    console.error('Dashboard render failed for tab ' + CURRENT_TAB + ':', err);
+  }
 
   // Update anomaly tab badge based on filtered set
   const anomCount = computeAnomCounts(fcForKpiStats()).total;
-  document.getElementById('anom-tab-count').textContent = anomCount;
+  const anomEl = document.getElementById('anom-tab-count');
+  if (anomEl) anomEl.textContent = anomCount;
   updateSlicerDependentLabels();
   trackFilterChange();
 }
@@ -2160,7 +2182,7 @@ function renderBCPortfolioCards(set){
 
       const rowsHtml = prs.sort((a,b) => b.enc - a.enc).map(p => `
         <tr>
-          <td><strong>${escapeHtml(p.name)}</strong>${p.providerCount > 0 ? ` <span style="color:var(--slate-700);font-size:11px">· ${p.providerCount} prov.</span>` : ''}</td>
+          <td><strong>${escapeHtml(practiceDisplayName(p))}</strong>${p.providerCount > 0 ? ` <span style="color:var(--slate-700);font-size:11px">· ${p.providerCount} prov.</span>` : ''}</td>
           <td><code style="font-size:11px;font-family:var(--font-mono);color:var(--slate-700)">${escapeHtml(p.bpn)}</code></td>
           <td>${pmaBadge(p.pma)}</td>
           <td>${practiceMainRowVersionHtml(p)}</td>
@@ -2337,7 +2359,7 @@ function renderOverview(){
   charts['top-clients'] = new Chart(ctx3, {
     type: 'bar',
     data: {
-      labels: top10.map(p => p.name.length > 24 ? p.name.slice(0,22)+'…' : p.name),
+      labels: top10.map(p => { const n = practiceDisplayName(p); return n.length > 24 ? n.slice(0,22)+'\u2026' : n; }),
       datasets: [{
         label: 'Encounters',
         data: top10.map(p => p.enc),
@@ -2487,7 +2509,7 @@ function renderEncTable(){
     return `
       <tr class="enc-row" onclick="toggleEncRow('${rowId}')" style="cursor:pointer">
         <td>${i+1}</td>
-        <td><strong>${escapeHtml(p.name)}</strong></td>
+        <td><strong>${escapeHtml(practiceDisplayName(p))}</strong></td>
         <td><code style="font-size:11px;font-family:var(--font-mono);color:var(--slate-700)">${escapeHtml(p.bpn)}</code></td>
         <td>${encounterTableProviderCountHtml(p)}</td>
         <td>${escapeHtml(p.bc) || '—'}</td>
@@ -2955,9 +2977,9 @@ function renderBCView(){
     } else {
       let provTitle;
       if (!SLICER || !SLICER.dates || !SLICER.dates.length || (typeof slicerIsFullRange === 'function' && slicerIsFullRange())) {
-        provTitle = `${escapeHtml(p.name)} · ${provRoster} treating provider${provRoster === 1 ? '' : 's'} · click View features for per-provider breakdown`;
+        provTitle = `${escapeHtml(practiceDisplayName(p))} · ${provRoster} treating provider${provRoster === 1 ? '' : 's'} · click View features for per-provider breakdown`;
       } else {
-        provTitle = `${escapeHtml(p.name)} · ${provShown} with activity in selected range · ${provRoster} in full bundle · click View features for breakdown`;
+        provTitle = `${escapeHtml(practiceDisplayName(p))} · ${provShown} with activity in selected range · ${provRoster} in full bundle · click View features for breakdown`;
       }
       provPanelHtml = `
       <div class="prov-panel">
@@ -2971,7 +2993,7 @@ function renderBCView(){
     const rid = 'bv-' + i;
     return `
       <tr class="bc-row" onclick="toggleEncRow('${rid}')" style="cursor:pointer">
-        <td><strong>${escapeHtml(p.name)}</strong></td>
+        <td><strong>${escapeHtml(practiceDisplayName(p))}</strong></td>
         <td><code style="font-size:11px;font-family:var(--font-mono);color:var(--slate-700)">${escapeHtml(p.bpn)}</code></td>
         <td style="text-align:center">${bcViewProviderCountHtml(p)}</td>
         <td>${p.bc ? escapeHtml(p.bc) : '<span class="badge b-no-bc">No BC</span>'}</td>
@@ -3023,11 +3045,11 @@ function renderAnomalies(){
     }
   }
   const sevOrder = { cr:0, wa:1, in:2 };
-  list.sort((a,b) => (sevOrder[a.sev]||3) - (sevOrder[b.sev]||3) || a.name.localeCompare(b.name));
+  list.sort((a,b) => (sevOrder[a.sev]||3) - (sevOrder[b.sev]||3) || practiceDisplayName(a).localeCompare(practiceDisplayName(b)));
 
   const rows = list.slice(0, 200).map(a => `
     <tr>
-      <td><strong>${escapeHtml(a.name)}</strong></td>
+      <td><strong>${escapeHtml(practiceDisplayName(a))}</strong></td>
       <td><code style="font-size:11px;font-family:var(--font-mono);color:var(--slate-700)">${escapeHtml(a.bpn)}</code></td>
       <td>${pmaBadge(a.pma)}</td>
       <td>${practiceMainRowVersionHtml(a)}</td>
@@ -3181,7 +3203,7 @@ function openProviderFeatures(provKey){
           <div>
             <div class="modal-title">${escapeHtml(prov.name)}</div>
             <div class="modal-sub">
-              ${escapeHtml(practice.name)} · BPN <code style="font-family:var(--font-mono)">${escapeHtml(practice.bpn)}</code> · TPN <code style="font-family:var(--font-mono)">${escapeHtml(prov.tpn)}</code>
+              ${escapeHtml(practiceDisplayName(practice))} · BPN <code style="font-family:var(--font-mono)">${escapeHtml(practice.bpn)}</code> · TPN <code style="font-family:var(--font-mono)">${escapeHtml(prov.tpn)}</code>
             </div>
           </div>
           <button class="modal-close" onclick="closeProviderModal()">✕</button>
@@ -3544,9 +3566,9 @@ function providerStatsFromDaily(provKey){
   return { enc, feat, days, lastActive: lastIdx >= 0 ? SLICER.dates[lastIdx] : null };
 }
 function updateSlicerDependentLabels(){
-  if (!document.getElementById('bc-th-enc')) return;
   const full = slicerIsFullRange();
   const days = slicerDaySpan();
+  const rangePhrase = full ? 'full data period' : (days + 'd in selected range');
   const encH = full ? 'Enc (full)' : ('Enc (' + days + 'd)');
   const featH = full ? 'Feature events' : ('Feature events (' + days + 'd)');
   const el1 = document.getElementById('bc-th-enc');
@@ -3555,6 +3577,16 @@ function updateSlicerDependentLabels(){
   if (el2) el2.textContent = encH;
   const el3 = document.getElementById('bc-th-feat');
   if (el3) el3.textContent = featH;
+
+  const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  setText('lbl-daily-users-title', 'Encounter users vs feature-only (' + (full ? 'all days' : (days + 'd')) + ')');
+  setText('lbl-daily-users-sub', 'Daily active user split · ' + rangePhrase);
+  setText('lbl-ov-daily-title', 'Daily active users (' + (full ? 'all days' : (days + 'd')) + ')');
+  setText('lbl-ov-daily-sub', 'Unique TPNs per day from pipeline data · ' + rangePhrase + '. Encounter vs feature-only TPNs.');
+  setText('lbl-top-clients-sub', (full ? 'Full data period' : (days + 'd selected')) + ' · filtered set');
+  setText('lbl-enc-trend-sub', 'Raw total + 7-day moving average · ' + rangePhrase);
+  setText('lbl-enc-table-sub', 'Filtered set · ranked by encounter volume in ' + rangePhrase + ' · BPN, TPN and treating providers included');
+  setText('lbl-feat-stack-sub', 'Daily event volume · ' + rangePhrase + ' · select categories to compare');
 }
 
 
@@ -5058,7 +5090,7 @@ tr:hover td{background:#fafaf8;}
       </div>
 
       <div class="ch2e">
-        <div class="card"><div class="ct">Encounter users vs feature-only (30 days)</div><div class="cs">Daily active user split across all clients</div><div class="chw h240"><canvas id="c-daily-users"></canvas></div></div>
+        <div class="card"><div class="ct" id="lbl-daily-users-title">Encounter users vs feature-only</div><div class="cs" id="lbl-daily-users-sub">Daily active user split · selected date range</div><div class="chw h240"><canvas id="c-daily-users"></canvas></div></div>
         <div class="card"><div class="ct">Portfolio by team</div><div class="cs">Client count per regional team</div><div class="chw h240"><canvas id="c-team-bar"></canvas></div></div>
       </div>
 
@@ -5116,11 +5148,11 @@ tr:hover td{background:#fafaf8;}
         <div class="kpi kpu"><div class="klbl">AI events (range)</div><div class="kval" id="ov-ai">—</div><div class="ksub" id="ov-ai-sub">category 5 · filtered slice</div></div>
       </div>
       <div class="ch3">
-        <div class="card"><div class="ct">Daily active users (30 days)</div><div class="cs">Unique TPNs per day from pipeline data (not the same as treating-provider roster above). Encounter vs feature-only TPNs.</div><div class="chw h240"><canvas id="c-ov-daily"></canvas></div></div>
+        <div class="card"><div class="ct" id="lbl-ov-daily-title">Daily active users</div><div class="cs" id="lbl-ov-daily-sub">Unique TPNs per day from pipeline data · selected date range. Encounter vs feature-only TPNs.</div><div class="chw h240"><canvas id="c-ov-daily"></canvas></div></div>
         <div class="card"><div class="ct">User personas</div><div class="cs">By billing practice in filtered set · slice-aware when the date range is narrowed</div><div class="chw h240"><canvas id="c-personas"></canvas></div></div>
       </div>
       <div class="ch2">
-        <div class="card"><div class="ct">Top clients by encounter volume</div><div class="cs">Last 30 days · filtered set</div><div class="chw h280"><canvas id="c-top-clients"></canvas></div></div>
+        <div class="card"><div class="ct">Top clients by encounter volume</div><div class="cs" id="lbl-top-clients-sub">Selected date range · filtered set</div><div class="chw h280"><canvas id="c-top-clients"></canvas></div></div>
         <div class="card"><div class="ct">Feature category share</div><div class="cs">All 9 categories · % of total events in filtered range</div><div class="chw h280"><canvas id="c-cat-pie"></canvas></div></div>
       </div>
     </div>
@@ -5138,12 +5170,12 @@ tr:hover td{background:#fafaf8;}
         <div class="kpi kpu"><div class="klbl">Avg enc / enc-active provider</div><div class="kval" id="enc-k2">—</div><div class="ksub" id="enc-k2-sub">slice volume ÷ prov. with enc</div></div>
       </div>
       <div class="cfull card">
-        <div class="ct">Daily encounter completions</div><div class="cs">Raw total + 7-day moving average · 30 days</div>
+        <div class="ct">Daily encounter completions</div><div class="cs" id="lbl-enc-trend-sub">Raw total + 7-day moving average · selected date range</div>
         <div class="chw h280"><canvas id="c-encounter-trend"></canvas></div>
       </div>
       <div class="cfull card">
         <div class="ct" style="margin-bottom:12px">Client encounter detail</div>
-        <div class="cs" style="margin-top:0">Filtered set · ranked by 30-day encounter volume · BPN, TPN and treating providers included</div>
+        <div class="cs" style="margin-top:0" id="lbl-enc-table-sub">Filtered set · ranked by encounter volume in selected range · BPN, TPN and treating providers included</div>
         <div class="tw"><table>
           <thead><tr><th>#</th><th>Practice name</th><th>BPN</th><th>Treating providers (TPN)</th><th>BC</th><th>Team</th><th>PMA</th><th>App version</th><th>Persona</th><th id="enc-th-enc">Enc (full)</th><th>Avg/day</th><th>Company status</th></tr></thead>
           <tbody id="enc-tbody"></tbody>
@@ -5169,7 +5201,7 @@ tr:hover td{background:#fafaf8;}
       <div class="ch3">
         <div class="card">
           <div class="ct" style="margin-bottom:4px">Feature category trends</div>
-          <div class="cs" style="margin-bottom:10px">Daily event volume · 30 days · select categories to compare</div>
+          <div class="cs" style="margin-bottom:10px" id="lbl-feat-stack-sub">Daily event volume · selected date range · select categories to compare</div>
           <div id="feat-cat-pills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
           <div class="chw h280"><canvas id="c-feat-stack"></canvas></div>
         </div>
