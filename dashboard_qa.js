@@ -12,11 +12,12 @@
 
   const QA_PROMPTS = [
     { label: 'Filter & KPI summary', q: 'Summarize the current filter and KPI counts' },
-    { label: 'Avg features / active provider', q: 'How is avg features per active provider calculated?' },
-    { label: 'Date range & refresh', q: 'What date range is selected and when was data last refreshed?' },
+    { label: 'Persona mix', q: 'Persona mix in the current filter' },
+    { label: 'Feature categories', q: 'Feature category breakdown in the current filter' },
+    { label: 'Zero usage practices', q: 'Which practices have zero usage in the selected range?' },
+    { label: 'Month vs prior month', q: 'Compare August vs July for the current filter' },
     { label: 'Top 10 by encounters', q: 'Top 10 practices by encounters' },
-    { label: 'Search practice name', q: '' },
-    { label: 'Inactive providers', q: 'How many inactive treating providers in the current filter?' },
+    { label: 'Version adoption', q: 'How many practices are on the latest app version?' },
     { label: 'What can I ask?', q: 'What questions can you answer?' },
   ];
 
@@ -197,11 +198,16 @@
 
   const QA_SUGGEST_QUESTIONS = [
     { label: 'Filter & KPI summary', q: 'Summarize the current filter and KPI counts' },
+    { label: 'Persona mix', q: 'Persona mix in the current filter' },
+    { label: 'Feature categories', q: 'Feature category breakdown in the current filter' },
+    { label: 'Zero usage practices', q: 'Which practices have zero usage in the selected range?' },
+    { label: 'Month vs prior month', q: 'Compare August vs July for the current filter' },
+    { label: 'Top 10 by encounters', q: 'Top 10 practices by encounters' },
+    { label: 'Top features for a practice', q: 'Top features for practice' },
+    { label: 'Version adoption', q: 'How many practices are on the latest app version?' },
     { label: 'Avg features / active provider', q: 'How is avg features per active provider calculated?' },
     { label: 'Date range & refresh', q: 'What date range is selected and when was data last refreshed?' },
-    { label: 'Top 10 by encounters', q: 'Top 10 practices by encounters' },
     { label: 'Encounter count', q: 'How many encounter events in the current filter?' },
-    { label: 'Feature count', q: 'How many feature events in the current filter?' },
     { label: 'Inactive providers', q: 'How many inactive treating providers in the current filter?' },
     { label: 'What can I ask?', q: 'What questions can you answer?' },
   ];
@@ -343,7 +349,173 @@
     'explain', 'calculat', 'definition', 'what is the', 'what are', 'date range',
     'last refresh', 'refreshed', 'active provider', 'inactive provider', 'feature event',
     'encounter event', 'ai event', 'anomal', 'without bc', 'feature only',
+    'persona', 'category', 'categories', 'zero usage', 'dormant', 'inactive practice',
+    'month', 'compare', 'versus', ' vs ', 'mom', 'version', 'on latest', 'top feature',
   ];
+
+  const QA_MONTH_ALIASES = {
+    jan: '01', january: '01', feb: '02', february: '02', mar: '03', march: '03',
+    apr: '04', april: '04', may: '05', jun: '06', june: '06', jul: '07', july: '07',
+    aug: '08', august: '08', sep: '09', sept: '09', september: '09',
+    oct: '10', october: '10', nov: '11', november: '11', dec: '12', december: '12',
+  };
+
+  function qaParseYearMonth(qLower) {
+    const iso = qLower.match(/\b(20\d{2})[-/](0?[1-9]|1[0-2])\b/);
+    if (iso) return iso[1] + '-' + String(iso[2]).padStart(2, '0');
+    const named = qLower.match(
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\b(?:\s+(20\d{2}))?/
+    );
+    if (!named) return null;
+    const mm = QA_MONTH_ALIASES[named[1]];
+    if (!mm) return null;
+    let yyyy = named[2];
+    if (!yyyy && DATA && DATA.metadata && DATA.metadata.DataDateMax) {
+      yyyy = String(DATA.metadata.DataDateMax).slice(0, 4);
+    }
+    if (!yyyy && SLICER && SLICER.dates && SLICER.dates.length) {
+      yyyy = String(SLICER.dates[SLICER.endIdx] || '').slice(0, 4);
+    }
+    if (!yyyy) yyyy = String(new Date().getFullYear());
+    return yyyy + '-' + mm;
+  }
+
+  function qaParseTwoMonths(qLower) {
+    const vs = qLower.match(
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\b(?:\s+(20\d{2}))?\s+(?:vs|versus|compared to|against|to)\s+\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\b(?:\s+(20\d{2}))?/
+    );
+    if (!vs) return null;
+    function ymFrom(name, year) {
+      const mm = QA_MONTH_ALIASES[name];
+      if (!mm) return null;
+      let yyyy = year;
+      if (!yyyy && DATA && DATA.metadata && DATA.metadata.DataDateMax) {
+        yyyy = String(DATA.metadata.DataDateMax).slice(0, 4);
+      }
+      if (!yyyy) yyyy = String(new Date().getFullYear());
+      return yyyy + '-' + mm;
+    }
+    const a = ymFrom(vs[1], vs[2]);
+    const b = ymFrom(vs[3], vs[4]);
+    if (!a || !b) return null;
+    return { a: a, b: b };
+  }
+
+  function qaMonthLabel(ym) {
+    if (!ym || ym.length < 7) return ym || '—';
+    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const m = parseInt(ym.slice(5, 7), 10);
+    return (names[m - 1] || ym) + ' ' + ym.slice(2, 4);
+  }
+
+  function qaPriorMonth(ym) {
+    const y = parseInt(ym.slice(0, 4), 10);
+    const m = parseInt(ym.slice(5, 7), 10);
+    if (m <= 1) return (y - 1) + '-12';
+    return y + '-' + String(m - 1).padStart(2, '0');
+  }
+
+  function qaBpnDailyRecs(bpn) {
+    const bd = DATA.bpnDaily || {};
+    const key = String(bpn);
+    if (bd[key]) return bd[key];
+    const norm = String(bpn).replace(/^0+/, '') || '0';
+    if (bd[norm]) return bd[norm];
+    for (const k of Object.keys(bd)) {
+      if (String(k).replace(/^0+/, '') === norm) return bd[k];
+    }
+    return [];
+  }
+
+  function qaUsageForMonth(bpn, ym) {
+    const recs = qaBpnDailyRecs(bpn);
+    let enc = 0, feat = 0, days = 0;
+    if (!SLICER || !SLICER.dates) return { enc: 0, feat: 0, days: 0 };
+    for (let i = 0; i < recs.length; i++) {
+      const r = recs[i];
+      const d = SLICER.dates[r[0]];
+      if (!d || d.indexOf(ym) !== 0) continue;
+      enc += r[1] || 0;
+      feat += r[2] || 0;
+      if ((r[1] || 0) > 0 || (r[2] || 0) > 0) days += 1;
+    }
+    return { enc: enc, feat: feat, days: days };
+  }
+
+  function qaUsageInSlicer(bpn) {
+    const recs = qaBpnDailyRecs(bpn);
+    let enc = 0, feat = 0, days = 0;
+    if (!SLICER || !SLICER.dates) return { enc: 0, feat: 0, days: 0 };
+    for (let i = 0; i < recs.length; i++) {
+      const r = recs[i];
+      if (r[0] < SLICER.startIdx || r[0] > SLICER.endIdx) continue;
+      enc += r[1] || 0;
+      feat += r[2] || 0;
+      if ((r[1] || 0) > 0 || (r[2] || 0) > 0) days += 1;
+    }
+    return { enc: enc, feat: feat, days: days };
+  }
+
+  function qaAggregateTopFeatures(p, limit) {
+    const map = {};
+    (p.providers || []).forEach(function (pr) {
+      (pr.topFeatures || []).forEach(function (f) {
+        let name = null;
+        let cnt = 0;
+        let cat = '';
+        if (Array.isArray(f)) {
+          name = f[0];
+          cnt = f[1] || 0;
+        } else if (f && typeof f === 'object') {
+          name = f.feature || f.name || f.key || null;
+          cnt = f.count || f.n || 0;
+          cat = String(f.category || '');
+        } else if (typeof f === 'string') {
+          name = f;
+          cnt = 1;
+        }
+        if (!name) return;
+        if (/^9\.\s*Noise/i.test(cat)) return;
+        map[name] = (map[name] || 0) + (Number(cnt) || 0);
+      });
+    });
+    return Object.keys(map).map(function (k) {
+      return { name: k, count: map[k] };
+    }).sort(function (a, b) { return b.count - a.count; }).slice(0, limit || 10);
+  }
+
+  function qaCategoryTotals(set) {
+    const totals = {};
+    (set || []).forEach(function (p) {
+      const cats = p.cats || {};
+      Object.keys(cats).forEach(function (c) {
+        totals[c] = (totals[c] || 0) + (cats[c] || 0);
+      });
+    });
+    return Object.keys(totals).map(function (c) {
+      return { cat: c, n: totals[c] };
+    }).sort(function (a, b) { return b.n - a.n; });
+  }
+
+  function qaPersonaMix(set) {
+    const counts = {};
+    (set || []).forEach(function (p) {
+      const persona = typeof practicePersonaForDisplay === 'function'
+        ? practicePersonaForDisplay(p)
+        : (p.persona || 'Unknown');
+      counts[persona] = (counts[persona] || 0) + 1;
+    });
+    return counts;
+  }
+
+  function qaResolvePracticeFromQuestion(q, qLower) {
+    const term = qaLookupSearchTerm(q, qLower);
+    if (!term) return null;
+    const hits = qaSearchPractices(term, { minScore: 18, limit: 5, pool: qaPool(true) });
+    if (!hits.length) return null;
+    if (hits.length === 1 || hits[0].score >= 70) return hits[0].p;
+    return hits[0].p;
+  }
 
   function qaMetricQuestion(qLower) {
     return QA_METRIC_PHRASES.some(function (k) { return qLower.indexOf(k) >= 0; });
@@ -418,6 +590,11 @@
 
   function qaPracticeBlock(p) {
     const w = typeof getExec30dWindow === 'function' ? getExec30dWindow() : null;
+    const sliceU = qaUsageInSlicer(p.bpn);
+    const persona = typeof practicePersonaForDisplay === 'function'
+      ? practicePersonaForDisplay(p) : (p.persona || '—');
+    const topFeats = qaAggregateTopFeatures(p, 5);
+    const cats = qaCategoryTotals([p]).slice(0, 5);
     let provLines = '';
     (p.providers || []).slice(0, 12).forEach(function (pr) {
       const daily = pr.provKey && typeof provider30dEncFeatFromDaily === 'function'
@@ -428,15 +605,36 @@
     });
     const more = (p.providers || []).length > 12
       ? '<li class="qa-muted">…and ' + ((p.providers || []).length - 12) + ' more in bundle</li>' : '';
+    let featHtml = '';
+    if (topFeats.length) {
+      featHtml = '<p class="qa-muted">Top features (lifetime / bundle ranking):</p><ul class="qa-list">' +
+        topFeats.map(function (f) {
+          const label = typeof featLabel === 'function' ? featLabel(f.name) : f.name;
+          return '<li>' + escapeHtml(label) + ' — <strong>' + fmtFull(f.count) + '</strong></li>';
+        }).join('') + '</ul>';
+    }
+    let catHtml = '';
+    if (cats.length) {
+      catHtml = '<p class="qa-muted">Feature categories (bundle totals):</p><ul class="qa-list">' +
+        cats.map(function (c) {
+          return '<li>' + escapeHtml(c.cat) + ' — <strong>' + fmtFull(c.n) + '</strong></li>';
+        }).join('') + '</ul>';
+    }
     return '<p><strong>' + escapeHtml(p.name) + '</strong> · BPN <code>' + escapeHtml(p.bpn) + '</code></p>' +
       '<ul class="qa-list">' +
       '<li>BC: ' + (p.bc ? escapeHtml(p.bc) : 'Unassigned') + '</li>' +
       '<li>Team: ' + escapeHtml(p.team || '—') + ' · PMA: ' + escapeHtml(p.pma || '—') + '</li>' +
-      '<li>Status: ' + escapeHtml(p.status || '—') + ' · Engagement: ' + escapeHtml(p.engagement || '—') + '</li>' +
-      '<li>Encounters (selected range): <strong>' + fmtFull(p.enc || 0) + '</strong></li>' +
-      '<li>Feature events (selected range): <strong>' + fmtFull(p.feat || 0) + '</strong></li>' +
+      '<li>Status: ' + escapeHtml(p.status || '—') + ' · Engagement: ' + escapeHtml(p.engagement || '—') +
+      ' · Persona: ' + escapeHtml(persona) + '</li>' +
+      '<li>App version: ' + escapeHtml(p.appVer || '—') +
+      (p.onLatest ? ' · <strong>on latest</strong>' : '') + '</li>' +
+      '<li>Encounters (selected range): <strong>' + fmtFull(sliceU.enc) + '</strong> · active days: ' +
+      fmtFull(sliceU.days) + '</li>' +
+      '<li>Feature events (selected range): <strong>' + fmtFull(sliceU.feat) + '</strong></li>' +
+      '<li>Bundle totals — enc: <strong>' + fmtFull(p.enc || 0) + '</strong> · feat: <strong>' +
+      fmtFull(p.feat || 0) + '</strong></li>' +
       '<li>Last active: ' + (p.lastActive ? formatDate(p.lastActive) : '—') + '</li>' +
-      '</ul>' +
+      '</ul>' + featHtml + catHtml +
       ((p.providers || []).length
         ? '<p class="qa-muted">Providers' + (w && w.nDays ? ' · ' + w.nDays + 'd window' : '') + ':</p><ul class="qa-list">' + provLines + more + '</ul>'
         : '<p class="qa-muted">No per-provider rows in bundle.</p>');
@@ -445,15 +643,18 @@
   function qaSuggestHints(qLower) {
     const hints = [];
     if (/enc|consult/.test(qLower)) hints.push('How many encounter events in the current filter?');
-    if (/feat|feature/.test(qLower)) hints.push('How many feature events in the current filter?');
+    if (/feat|feature/.test(qLower)) hints.push('Feature category breakdown in the current filter');
+    if (/persona|dormant|zero/.test(qLower)) hints.push('Persona mix in the current filter');
+    if (/month|aug|jul|sep|compare|vs/.test(qLower)) hints.push('Compare August vs July for the current filter');
+    if (/version|latest/.test(qLower)) hints.push('How many practices are on the latest app version?');
     if (/bc|consultant/.test(qLower)) hints.push('Summarize the current filter and KPI counts');
     if (/date|range|when|refresh/.test(qLower)) hints.push('What date range is selected and when was data last refreshed?');
     if (hints.length < 3) {
       hints.push('Summarize the current filter and KPI counts');
-      hints.push('Top 10 practices by encounters');
+      hints.push('Which practices have zero usage in the selected range?');
       hints.push('What questions can you answer?');
     }
-    return hints.slice(0, 4);
+    return hints.slice(0, 5);
   }
 
   function qaAnswerFilterSummary(dk, kb) {
@@ -509,6 +710,15 @@
       bc: qaIntentScore(qLower, tokens, ['clients for', 'practices for', 'bc ', 'business consultant']),
       anomalies: qaIntentScore(qLower, tokens, ['anomal', 'no bc', 'without bc', 'unassigned']),
       engagement: qaIntentScore(qLower, tokens, ['feature only', 'feature-only', 'inactive practice', 'engagement']),
+      personas: qaIntentScore(qLower, tokens, ['persona', 'power clinical', 'active clinical', 'low clinical', 'dormant']),
+      categories: qaIntentScore(qLower, tokens, ['category breakdown', 'feature categor', 'categories', 'clinical doc', 'pathology', 'scripts']),
+      zeroUsage: qaIntentScore(qLower, tokens, ['zero usage', 'no usage', 'no activity', 'inactive practice', 'dormant practice', 'which practices have zero']),
+      mom: qaIntentScore(qLower, tokens, ['compare', 'versus', ' vs ', 'mom', 'month on month', 'month-over-month']) +
+        (qaParseTwoMonths(qLower) ? 14 : 0),
+      version: qaIntentScore(qLower, tokens, ['latest version', 'on latest', 'app version', 'version adoption', 'upgrade']),
+      topFeatures: qaIntentScore(qLower, tokens, ['top feature', 'feature used', 'which features', 'most used feature']),
+      monthDetail: (qaParseYearMonth(qLower) && /(encounter|feature|usage|active day|consult)/.test(qLower) ? 16 : 0) +
+        (qaParseYearMonth(qLower) ? 4 : 0),
     };
 
     const ranked = Object.entries(scores).sort(function (a, b) { return b[1] - a[1]; });
@@ -522,12 +732,16 @@
 
     if (winner === 'help') {
       return qaOk('What I can answer',
-        '<p>Search by <strong>practice name</strong>, <strong>BPN</strong>, <strong>TPN</strong>, <strong>BC name</strong>, or <strong>provider name</strong> — even partial words.</p>' +
+        '<p>Search by <strong>practice name</strong>, <strong>BPN</strong>, <strong>TPN</strong>, <strong>BC name</strong>, or <strong>provider name</strong>.</p>' +
         '<ul class="qa-list">' +
-        '<li>Filter & KPI summary</li><li>Metric definitions (e.g. avg features / active provider)</li>' +
-        '<li>Top / bottom practices by encounters or features</li>' +
-        '<li>Practices for a BC · Provider lookup</li><li>Date range & data refresh</li>' +
-        '</ul><p class="qa-muted">Answers use only embedded data. No invented numbers.</p>',
+        '<li>Filter &amp; KPI summary · date range &amp; refresh</li>' +
+        '<li>Persona mix · feature category breakdown · version adoption</li>' +
+        '<li>Zero-usage / dormant practices in the selected range</li>' +
+        '<li>Month comparisons (e.g. “Compare August vs July for the current filter”)</li>' +
+        '<li>Practice month detail (e.g. “Encounters for BPN 1234567 in August”)</li>' +
+        '<li>Top features for a practice · top/bottom practices by enc/feat</li>' +
+        '<li>Practices for a BC · provider lookup · metric definitions</li>' +
+        '</ul><p class="qa-muted">Answers use only embedded dashboard data for the current filters and date slicer. No invented numbers.</p>',
         'Dashboard Q&A');
     }
 
@@ -657,6 +871,159 @@
         '<ul class="qa-list"><li>Feature-only practices: <strong>' + fmtFull(fo) + '</strong></li>' +
         '<li>Feature-only providers (activity window): <strong>' + fmtFull(kb.featProv) + '</strong></li></ul>',
         'practice.engagement · providerEngagementSplit()');
+    }
+
+    if (winner === 'personas') {
+      const mix = qaPersonaMix(dk.kpiSet);
+      const order = ['Power Clinical User', 'Active Clinical User', 'Low Clinical User', 'Inactive', 'Dormant'];
+      const keys = order.filter(function (k) { return mix[k]; }).concat(
+        Object.keys(mix).filter(function (k) { return order.indexOf(k) < 0; })
+      );
+      const total = dk.kpiSet.length || 1;
+      return qaOk('Persona mix (current filter)',
+        '<p>' + escapeHtml(qaDateContext()) + '</p>' +
+        '<ul class="qa-list">' + keys.map(function (k) {
+          const n = mix[k] || 0;
+          const pct = Math.round((n / total) * 1000) / 10;
+          return '<li>' + escapeHtml(k) + ': <strong>' + fmtFull(n) + '</strong> (' + pct + '%)</li>';
+        }).join('') + '</ul>',
+        'practicePersonaForDisplay() · clinical active days');
+    }
+
+    if (winner === 'categories') {
+      const rows = qaCategoryTotals(dk.kpiSet);
+      if (!rows.length) {
+        return qaUnavailable('No feature category totals in the current filter.');
+      }
+      const sum = rows.reduce(function (s, r) { return s + r.n; }, 0) || 1;
+      return qaOk('Feature categories (current filter)',
+        '<p>Bundle category totals for practices in the current filter (not re-sliced by day).</p>' +
+        '<ul class="qa-list">' + rows.map(function (r) {
+          return '<li>' + escapeHtml(r.cat) + ': <strong>' + fmtFull(r.n) + '</strong> (' +
+            (Math.round((r.n / sum) * 1000) / 10) + '%)</li>';
+        }).join('') + '</ul>',
+        'practice.cats');
+    }
+
+    if (winner === 'zeroUsage') {
+      const zeros = dk.kpiSet.filter(function (p) {
+        const u = qaUsageInSlicer(p.bpn);
+        return u.enc === 0 && u.feat === 0;
+      }).slice().sort(function (a, b) {
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+      if (!zeros.length) {
+        return qaOk('Zero usage',
+          '<p>No practices in the current filter have zero encounters and zero features in the selected range.</p>',
+          'bpnDaily · slicer');
+      }
+      const show = zeros.slice(0, 20);
+      return qaOk('Zero usage in selected range (' + zeros.length + ')',
+        '<p>' + escapeHtml(qaDateContext()) + '</p>' +
+        '<ul class="qa-list">' + show.map(function (p) {
+          return '<li><button type="button" class="qa-link-btn" data-q="' + escapeHtmlAttr(p.name) + '">' +
+            escapeHtml(p.name) + '</button> · BPN ' + escapeHtml(p.bpn) +
+            (p.bc ? ' · ' + escapeHtml(p.bc) : '') + '</li>';
+        }).join('') + '</ul>' +
+        (zeros.length > 20 ? '<p class="qa-muted">Showing first 20 of ' + zeros.length + '.</p>' : ''),
+        'bpnDaily within slicer');
+    }
+
+    if (winner === 'mom' || qaParseTwoMonths(qLower)) {
+      let pair = qaParseTwoMonths(qLower);
+      if (!pair) {
+        const one = qaParseYearMonth(qLower);
+        if (one) pair = { a: one, b: qaPriorMonth(one) };
+      }
+      if (!pair) {
+        // Default: latest full month in data vs prior
+        const maxD = (DATA.metadata && DATA.metadata.DataDateMax) || (SLICER && SLICER.dates[SLICER.endIdx]);
+        const latestYm = String(maxD || '').slice(0, 7);
+        if (latestYm.length === 7) pair = { a: latestYm, b: qaPriorMonth(latestYm) };
+      }
+      if (!pair) return qaUnavailable('Name two months, e.g. Compare August vs July for the current filter.');
+      // Prefer chronological: older first
+      let left = pair.b;
+      let right = pair.a;
+      if (pair.a < pair.b) { left = pair.a; right = pair.b; }
+      let encL = 0, featL = 0, encR = 0, featR = 0, activeL = 0, activeR = 0;
+      dk.kpiSet.forEach(function (p) {
+        const uL = qaUsageForMonth(p.bpn, left);
+        const uR = qaUsageForMonth(p.bpn, right);
+        encL += uL.enc; featL += uL.feat;
+        encR += uR.enc; featR += uR.feat;
+        if (uL.enc || uL.feat) activeL++;
+        if (uR.enc || uR.feat) activeR++;
+      });
+      const dEnc = encR - encL;
+      const dFeat = featR - featL;
+      return qaOk(qaMonthLabel(left) + ' → ' + qaMonthLabel(right) + ' (current filter)',
+        '<ul class="qa-list">' +
+        '<li>Encounters: <strong>' + fmtFull(encL) + '</strong> → <strong>' + fmtFull(encR) + '</strong> (' +
+        (dEnc >= 0 ? '+' : '') + fmtFull(dEnc) + ')</li>' +
+        '<li>Features: <strong>' + fmtFull(featL) + '</strong> → <strong>' + fmtFull(featR) + '</strong> (' +
+        (dFeat >= 0 ? '+' : '') + fmtFull(dFeat) + ')</li>' +
+        '<li>Practices with any activity: <strong>' + fmtFull(activeL) + '</strong> → <strong>' +
+        fmtFull(activeR) + '</strong></li>' +
+        '</ul><p class="qa-muted">Uses daily telemetry months for the filtered practice set.</p>',
+        'bpnDaily month buckets');
+    }
+
+    if (winner === 'version') {
+      const latest = (DATA.metadata && DATA.metadata.LatestVersion) || '—';
+      let on = 0, off = 0, unk = 0;
+      dk.kpiSet.forEach(function (p) {
+        if (p.onLatest) on++;
+        else if (p.appVer) off++;
+        else unk++;
+      });
+      return qaOk('App version adoption',
+        '<p>Latest in bundle: <strong>' + escapeHtml(String(latest)) + '</strong></p>' +
+        '<ul class="qa-list">' +
+        '<li>On latest: <strong>' + fmtFull(on) + '</strong></li>' +
+        '<li>Not on latest (has version): <strong>' + fmtFull(off) + '</strong></li>' +
+        '<li>Unknown / blank: <strong>' + fmtFull(unk) + '</strong></li>' +
+        '</ul>',
+        'practice.onLatest · metadata.LatestVersion');
+    }
+
+    if (winner === 'topFeatures') {
+      const p = qaResolvePracticeFromQuestion(q, qLower);
+      if (!p) {
+        return qaUnavailable('Name a practice or BPN, e.g. Top features for BPN 0154342',
+          null, ['Top features for practice', 'Summarize the current filter and KPI counts']);
+      }
+      const feats = qaAggregateTopFeatures(p, 12);
+      if (!feats.length) {
+        return qaUnavailable('No topFeatures stored for ' + p.name + '.');
+      }
+      return qaOk('Top features · ' + p.name,
+        '<p>BPN ' + escapeHtml(p.bpn) + ' · aggregated across treating providers (bundle ranking).</p>' +
+        '<ul class="qa-list">' + feats.map(function (f, i) {
+          const label = typeof featLabel === 'function' ? featLabel(f.name) : f.name;
+          return '<li>' + (i + 1) + '. ' + escapeHtml(label) + ' — <strong>' + fmtFull(f.count) + '</strong></li>';
+        }).join('') + '</ul>',
+        'provider.topFeatures');
+    }
+
+    if (winner === 'monthDetail' || (qaParseYearMonth(qLower) && qaResolvePracticeFromQuestion(q, qLower))) {
+      const ym = qaParseYearMonth(qLower);
+      const p = qaResolvePracticeFromQuestion(q, qLower);
+      if (ym && p) {
+        const u = qaUsageForMonth(p.bpn, ym);
+        const prior = qaPriorMonth(ym);
+        const up = qaUsageForMonth(p.bpn, prior);
+        return qaOk(p.name + ' · ' + qaMonthLabel(ym),
+          '<ul class="qa-list">' +
+          '<li>Encounters: <strong>' + fmtFull(u.enc) + '</strong> · active days: ' + fmtFull(u.days) + '</li>' +
+          '<li>Feature events: <strong>' + fmtFull(u.feat) + '</strong></li>' +
+          '<li>' + qaMonthLabel(prior) + ' comparison — enc ' + fmtFull(up.enc) + ' → ' + fmtFull(u.enc) +
+          ' · feat ' + fmtFull(up.feat) + ' → ' + fmtFull(u.feat) + '</li>' +
+          '</ul>' +
+          '<p class="qa-muted"><button type="button" class="qa-link-btn" data-q="' + escapeHtmlAttr(p.name) +
+          '">Full practice detail</button></p>',
+          'bpnDaily · ' + ym);
+      }
     }
 
     // Provider name search
