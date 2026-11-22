@@ -380,6 +380,1055 @@ function dedupeDashboardProviders(){
 }
 
 
+/** Test/demo billing practices â€” excluded from portfolio KPIs & aggregate charts (still searchable). */
+const BPN_EXCLUDE_FROM_KPI = new Set([111, 112, 9876543, 1230000]);
+function isExcludedKpiBpn(bpn){ return BPN_EXCLUDE_FROM_KPI.has(Number(bpn)); }
+function fcForKpiStats(){ return FC.filter(p => !isExcludedKpiBpn(p.bpn)); }
+function countEligiblePractices(){
+  return activePracticesForDashboard().filter(p => !isExcludedKpiBpn(p.bpn)).length;
+}
+/** BPN keys in fcForKpiStats() â€” daily KPI charts aggregate only these practices. */
+let _kpiDailyBpnSet = null;
+function refreshKpiDailyBpnSet(){
+  _kpiDailyBpnSet = new Set(fcForKpiStats().map(p => String(p.bpn)));
+}
+function kpiDailyBpnKeys(){
+  if (_kpiDailyBpnSet) return _kpiDailyBpnSet;
+  const bd = DATA.bpnDaily;
+  if (!bd) return new Set();
+  return new Set(Object.keys(bd).filter(k => !isExcludedKpiBpn(k)));
+}
+/** Sum bpnDaily rows for one date index (filtered practices + slicer window). */
+function aggregateBpnDailyAtDateIdx(di){
+  let enc = 0, encUsers = 0, featUsers = 0;
+  let evClin = 0, evScripts = 0, evPath = 0, evAI = 0, evPrev = 0, evTask = 0, evCust = 0, evNoise = 0;
+  const bd = DATA.bpnDaily;
+  if (!bd) return null;
+  for (const k of kpiDailyBpnKeys()){
+    const recs = bd[k];
+    // Ownership-only sites (no telemetry) have no bpnDaily rows â€” skip safely.
+    if (!recs || !recs.length) continue;
+    let lo = 0, hi = recs.length - 1, found = null;
+    while (lo <= hi){
+      const mid = (lo + hi) >> 1;
+      if (recs[mid][0] < di) lo = mid + 1;
+      else if (recs[mid][0] > di) hi = mid - 1;
+      else { found = recs[mid]; break; }
+    }
+    if (!found) continue;
+    const r = found;
+    enc += r[1];
+    evClin += r[3]; evScripts += r[4]; evPath += r[5]; evAI += r[6];
+    evPrev += r[7]; evTask += r[8]; evCust += r[9];
+    evNoise += r[10] || 0;
+    encUsers += r[11]; featUsers += r[12];
+  }
+  const dstr = SLICER && SLICER.dates && SLICER.dates[di] ? SLICER.dates[di] : '';
+  return {
+    d: dstr, date: dstr,
+    encUsers, featUsers,
+    enc, evEnc: enc,
+    evClin, evScripts, evPath, evAI, evPrev, evTask, evCust, evNoise,
+  };
+}
+/** Daily series for KPI charts â€” excludes test practices (see dailyForSlice for raw totals). */
+function dailyForSliceKpi(){
+  const out = [];
+  if (!SLICER || !SLICER.dates || SLICER.endIdx < SLICER.startIdx) return out;
+  for (let i = SLICER.startIdx; i <= SLICER.endIdx; i++){
+    const row = aggregateBpnDailyAtDateIdx(i);
+    if (row) out.push(row);
+  }
+  return out;
+}
+
+/* Feature categories â€” generated from generate_dashboard_data.py */
+const ALL_FEAT_CATS = [
+  "1. Encounters",
+  "2. Clinical Doc",
+  "3. Scripts",
+  "4. Pathology",
+  "5. AI Features",
+  "6. Preventative Care",
+  "7. Task Management",
+  "8. Customization",
+  "9. Noise / Passive"
+];
+const MEANINGFUL_FEAT_CATS = ALL_FEAT_CATS.filter(c => c !== '9. Noise / Passive');
+const FEAT_CATS = ALL_FEAT_CATS;
+let SELECTED_FEAT_CATS = [...FEAT_CATS];
+var charts = window.charts = window.charts || {};  // shared Chart.js registry (lexical + window)
+/** Single shared login â€” data refresh is via generate_dashboard_data.py (not this UI). */
+const DASHBOARD_PASSWORD = 'HbC@BC2026';
+const SESSION_KEY = 'hbc_dashboard_ok';
+const SESSION_EMAIL_KEY = 'hbc_dashboard_email';
+const SESSION_ID_KEY = 'hbc_dashboard_session_id';
+const USAGE_FORM_ENDPOINT = 'https://docs.google.com/forms/d/e/1FAIpQLSc7uql4wv4-wdCYLP88sNbwWCwVtZhFblBTO-D3AaKnuaoXJQ/formResponse';
+const USAGE_FORM_FIELDS = {
+  email: 'entry.168089887',
+  eventType: 'entry.2008585032',
+  eventLabel: 'entry.2020028970',
+  sessionId: 'entry.243850969',
+  pageUrl: 'entry.26882918',
+  userAgent: 'entry.1309130021',
+  details: 'entry.833300877',
+};
+let TRACKING_ENABLED = false;
+let _filterTrackTimer = null;
+
+function getUsageSessionId(){
+  let sid = sessionStorage.getItem(SESSION_ID_KEY);
+  if (!sid){
+    sid = (window.crypto && window.crypto.randomUUID)
+      ? window.crypto.randomUUID()
+      : 'sess-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem(SESSION_ID_KEY, sid);
+  }
+  return sid;
+}
+
+function getTrackingEmail(){
+  return (sessionStorage.getItem(SESSION_EMAIL_KEY) || '').trim().toLowerCase();
+}
+
+function isLikelyEmail(v){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
+}
+
+function trackUsageEvent(eventType, eventLabel, details){
+  const email = getTrackingEmail();
+  if (!email || !USAGE_FORM_ENDPOINT) return;
+  try {
+    const body = new URLSearchParams();
+    body.set(USAGE_FORM_FIELDS.email, email);
+    body.set(USAGE_FORM_FIELDS.eventType, eventType || '');
+    body.set(USAGE_FORM_FIELDS.eventLabel, eventLabel || '');
+    body.set(USAGE_FORM_FIELDS.sessionId, getUsageSessionId());
+    body.set(USAGE_FORM_FIELDS.pageUrl, location.href);
+    body.set(USAGE_FORM_FIELDS.userAgent, navigator.userAgent || '');
+    body.set(USAGE_FORM_FIELDS.details, details ? JSON.stringify(details) : '');
+    fetch(USAGE_FORM_ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  } catch(e) {}
+}
+
+function trackFilterChange(){
+  if (!TRACKING_ENABLED) return;
+  clearTimeout(_filterTrackTimer);
+  _filterTrackTimer = setTimeout(() => {
+    const q = (document.getElementById('f-q')?.value || '').trim();
+    trackUsageEvent('filter_change', CURRENT_TAB, {
+      bc: getMultiFilterValues('f-bc').join('|'),
+      team: getMultiFilterValues('f-team').join('|'),
+      pma: document.getElementById('f-pma')?.value || '',
+      engagement: document.getElementById('f-eng')?.value || '',
+      hasQuery: !!q,
+      queryLength: q.length,
+      resultCount: FC.length,
+    });
+  }, 700);
+}
+
+function trackSlicerChange(source, label){
+  if (!TRACKING_ENABLED || !SLICER || !SLICER.dates || !SLICER.dates.length) return;
+  trackUsageEvent('slicer_change', label || source || '', {
+    source,
+    preset: SLICER.preset,
+    from: SLICER.dates[SLICER.startIdx],
+    to: SLICER.dates[SLICER.endIdx],
+    days: SLICER.endIdx - SLICER.startIdx + 1,
+    tab: CURRENT_TAB,
+  });
+}
+
+/* ============================================================
+   Auth flow
+   ============================================================ */
+function doLogin(){
+  const email = document.getElementById('auth-email').value.trim().toLowerCase();
+  const pwd = document.getElementById('auth-pwd').value.trim();
+  if (!isLikelyEmail(email)){
+    document.getElementById('auth-error').textContent = 'Enter a valid email address to continue.';
+    document.getElementById('auth-error').style.display = 'block';
+    document.getElementById('auth-email').focus();
+    return;
+  }
+  if (pwd !== DASHBOARD_PASSWORD){
+    document.getElementById('auth-error').textContent = 'Incorrect password - please try again.';
+    document.getElementById('auth-error').style.display = 'block';
+    document.getElementById('auth-pwd').value = '';
+    return;
+  }
+  sessionStorage.setItem(SESSION_KEY, '1');
+  sessionStorage.setItem(SESSION_EMAIL_KEY, email);
+  getUsageSessionId();
+  enterApp('login');
+}
+function signOut(){
+  trackUsageEvent('sign_out', CURRENT_TAB, {});
+  sessionStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_EMAIL_KEY);
+  sessionStorage.removeItem(SESSION_ID_KEY);
+  location.reload();
+}
+function enterApp(entryEvent){
+  const email = getTrackingEmail();
+  document.getElementById('user-name').textContent = email || 'BC Client Tracker';
+  document.getElementById('user-role').textContent = 'Dashboard';
+  document.getElementById('user-avatar').textContent = email ? email.slice(0, 2).toUpperCase() : 'HB';
+
+  document.getElementById('auth-gate').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.body.style.overflow = '';
+  const _stale = document.getElementById('provider-modal');
+  if (_stale) _stale.remove();
+  window._openModalKey = null;
+
+  document.getElementById('data-period').textContent = formatDate(DATA.stats.dataPeriodEnd);
+
+  const _lr = document.getElementById('hdr-last-refresh');
+  if (_lr) {
+    const m = DATA.metadata || {};
+    if (m.LastRefreshed_SAST) _lr.textContent = m.LastRefreshed_SAST;
+    else if (m.LastRefreshed) {
+      const d = new Date(m.LastRefreshed);
+      _lr.textContent = isNaN(d.getTime()) ? String(m.LastRefreshed) : d.toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' });
+    } else if (DATA.generatedAt) {
+      const d = new Date(DATA.generatedAt);
+      _lr.textContent = isNaN(d.getTime()) ? String(DATA.generatedAt) : d.toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' });
+    } else _lr.textContent = 'â€”';
+  }
+
+  populateFilters();
+  applyFilters();
+  renderExec();
+  renderDefs();
+  TRACKING_ENABLED = true;
+  trackUsageEvent(entryEvent === 'login' ? 'login' : 'session_resume', CURRENT_TAB, {
+    dataPeriodEnd: DATA.stats && DATA.stats.dataPeriodEnd,
+    generatedAt: DATA.generatedAt,
+  });
+  trackUsageEvent('tab_view', CURRENT_TAB, { initial: true });
+}
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+function fmt(n){
+  if (n === null || n === undefined || isNaN(n)) return 'â€”';
+  if (typeof n !== 'number') n = Number(n);
+  if (n >= 1_000_000) return (n/1_000_000).toFixed(1).replace(/\.0$/,'') + 'M';
+  if (n >= 1_000) return (n/1_000).toFixed(1).replace(/\.0$/,'') + 'k';
+  return n.toLocaleString();
+}
+function fmtFull(n){
+  if (n === null || n === undefined || isNaN(n)) return 'â€”';
+  return Number(n).toLocaleString();
+}
+function pct(n,d){
+  if (!d) return '0%';
+  return Math.round(100*n/d) + '%';
+}
+function pct1(n,d){
+  if (!d) return '0';
+  return (100*n/d).toFixed(1).replace(/\.0$/,'');
+}
+
+/**
+ * Trailing window (up to 30 days) within the current date slicer, ending on the slicer end date.
+ * Executive engagement uses recent daily provDaily, not lifetime pr.enc / pr.feat.
+ */
+function getExec30dWindow(){
+  if (!SLICER || !SLICER.dates || !SLICER.dates.length) {
+    return { fromIdx: 0, toIdx: 0, nDays: 0, startStr: '', endStr: '' };
+  }
+  const a = SLICER.startIdx, b = SLICER.endIdx;
+  const to = b;
+  const from = Math.max(a, b - 29);
+  return {
+    fromIdx: from,
+    toIdx: to,
+    nDays: to - from + 1,
+    startStr: SLICER.dates[from],
+    endStr: SLICER.dates[to],
+  };
+}
+
+/** consult-complete (enc) and meaningful feature total (feat) in the executive window, from provDaily. */
+function provider30dEncFeatFromDaily(provKey){
+  const w = getExec30dWindow();
+  if (!w.nDays) return { enc: 0, feat: 0 };
+  const recs = (DATA.provDaily && provKey && DATA.provDaily[provKey]) || [];
+  let enc = 0, feat = 0;
+  for (const r of recs){
+    if (r[0] < w.fromIdx || r[0] > w.toIdx) continue;
+    enc += (r[1] || 0);
+    feat += (r[2] || 0);
+  }
+  return { enc, feat };
+}
+
+
+function providerClinicalActiveDaysInWindow(pr){
+  const w = getExec30dWindow();
+  if (!w.nDays || !pr || !pr.provKey) return 0;
+  const recs = (DATA.provDaily && DATA.provDaily[pr.provKey]) || [];
+  let days = 0;
+  for (const r of recs){
+    if (r[0] < w.fromIdx || r[0] > w.toIdx) continue;
+    if ((r[1] || 0) > 0) days++;
+  }
+  return days;
+}
+
+function personaFromClinicalActiveDays(days, inactive){
+  if (inactive) return 'Inactive';
+  if (days >= 20) return 'Power Clinical User';
+  if (days >= 10) return 'Active Clinical User';
+  if (days >= 1) return 'Low Clinical User';
+  return 'Dormant';
+}
+
+const PRODUCT_TIER_LABELS = new Set([
+  'super', 'standard', 'basic', 'premium', 'starter', 'enterprise', 'clinical',
+  'healthbridge clinical', 'healthbridge clinical user', 'healthbridge super',
+]);
+
+function looksLikeProductTier(s){
+  const t = String(s || '').trim().toLowerCase();
+  if (!t) return false;
+  if (PRODUCT_TIER_LABELS.has(t)) return true;
+  return t.includes('healthbridge') && !['active','trial','in progress','inprogress','inactive','paused','on hold','onhold','cancelled','canceled','pending cancellation','rejected','suspended','ex-client','system cancelled','archive'].includes(t);
+}
+
+const PERSONA_DISPLAY_LABELS = new Set([
+  'power clinical user', 'active clinical user', 'low clinical user', 'inactive', 'dormant',
+]);
+
+function looksLikePersonaLabel(s){
+  return PERSONA_DISPLAY_LABELS.has(String(s || '').trim().toLowerCase());
+}
+
+function isValidCompanyStatusValue(s){
+  const v = String(s || '').trim();
+  if (!v || v.toLowerCase() === 'unknown' || looksLikeProductTier(v) || looksLikePersonaLabel(v)) return false;
+  return true;
+}
+
+function companyStatusLabel(p){
+  if (!p) return 'â€”';
+  const c = (p.companyStatus || '').trim();
+  if (isValidCompanyStatusValue(c)) return c;
+  const s = (p.status || '').trim();
+  if (isValidCompanyStatusValue(s)) return s;
+  return 'â€”';
+}
+const CANCELLED_STATUS_VALUES = new Set([
+  'cancelled', 'canceled',
+  'system cancelled', 'systemcancelled',
+  'pending cancellation', 'pendingcancellation',
+]);
+
+function isCancelledPractice(p){
+  if (!p) return false;
+  for (const field of ['companyStatus', 'status']) {
+    const raw = String(p[field] || '').trim().toLowerCase();
+    if (!raw) continue;
+    if (CANCELLED_STATUS_VALUES.has(raw)) return true;
+    const compact = raw.replace(/\s+/g, '');
+    if (CANCELLED_STATUS_VALUES.has(compact)) return true;
+  }
+  return false;
+}
+
+function activePracticesForDashboard(){
+  return (DATA.practices || []).filter(p => !isCancelledPractice(p));
+}
+
+function practiceExcludedFromTreatingProviderKpis(p){
+  return isCancelledPractice(p);
+}
+
+
+function practiceHasExplicitInactiveStatus(){
+  return false;
+}
+
+function practiceClinicalActiveDaysInWindow(p){
+  const providers = (p && p.providers) || [];
+  if (providers.length){
+    return Math.max(...providers.map(providerClinicalActiveDaysInWindow));
+  }
+  const w = getExec30dWindow();
+  if (!w.nDays || !p || !p.bpn) return 0;
+  const recs = (DATA.bpnDaily && DATA.bpnDaily[String(p.bpn)]) || [];
+  let days = 0;
+  for (const r of recs){
+    if (r[0] < w.fromIdx || r[0] > w.toIdx) continue;
+    if ((r[1] || 0) > 0) days++;
+  }
+  return days;
+}
+
+function practicePersonaForDisplay(p){
+  const bundled = (p && p.persona) ? String(p.persona).trim() : '';
+  if (bundled && bundled !== 'Inactive') return bundled;
+  return personaFromClinicalActiveDays(practiceClinicalActiveDaysInWindow(p), false);
+}
+
+function providerPersonaForDisplay(pr){
+  const bundled = (pr && pr.persona) ? String(pr.persona).trim() : '';
+  if (bundled && bundled !== 'Inactive') return bundled;
+  return personaFromClinicalActiveDays(providerClinicalActiveDaysInWindow(pr), false);
+}
+
+/** Classify each treating provider by enc/feat in the executive window (provDaily). */
+function providerEngagementSplit(practices){
+  let encProv = 0, featProv = 0, noneProv = 0;
+  for (const p of practices){
+    for (const pr of (p.providers || [])){
+      const { enc, feat } = provider30dEncFeatFromDaily(pr.provKey);
+      if (enc > 0) encProv++;
+      else if (feat > 0) featProv++;
+      else noneProv++;
+    }
+  }
+  return { encProv, featProv, noneProv };
+}
+
+/** Meaningful feature-event sum in the exec window for providers active there (â‰¥1 consult-complete or â‰¥1 feature event). */
+function sumFeatEventsActiveProviders(practices){
+  let sum = 0;
+  for (const p of practices){
+    for (const pr of (p.providers || [])){
+      const { enc, feat } = provider30dEncFeatFromDaily(pr.provKey);
+      if (enc > 0 || feat > 0) sum += feat;
+    }
+  }
+  return sum;
+}
+
+/** Unified KPI counts â€” activity window is trailing up to 30d within the date slicer (provDaily). */
+function kpiBundleForFilteredPractices(set){
+  const sp = providerEngagementSplit(set);
+  const encProv = sp.encProv, featProv = sp.featProv, noneProv = sp.noneProv;
+  const activeProv = encProv + featProv;
+  const roster = encProv + featProv + noneProv;
+  const sumFeatActive = sumFeatEventsActiveProviders(set);
+  const featPerActive = activeProv ? (sumFeatActive / activeProv) : 0;
+  return {
+    pracN: set.length,
+    encProv, featProv, noneProv, activeProv, roster,
+    sumFeatActive, featPerActive,
+  };
+}
+
+/** Single source for cross-tab KPIs â€” same filtered practice set and definitions everywhere. */
+function buildDashboardKpis(){
+  const kpiSet = fcForKpiStats();
+  const kb = kpiBundleForFilteredPractices(kpiSet);
+  let sumEnc = 0, sumFeat = 0, sumAI = 0;
+  for (const p of kpiSet){
+    sumEnc += p.enc || 0;
+    sumFeat += p.feat || 0;
+    sumAI += (p.cats && p.cats['5. AI Features']) || 0;
+  }
+  const wExec = getExec30dWindow();
+  const fullR = slicerIsFullRange();
+  const dSpan = slicerDaySpan();
+  const volumeSub = fullR
+    ? 'filtered practices Â· full data period'
+    : ('filtered practices Â· ' + dSpan + 'd in range');
+  const activeSub = getActiveProvidersKpiSubtitle();
+  const inactiveSub = kb.roster ? (pct(kb.noneProv, kb.roster) + ' of roster') : 'â€”';
+  const favgVal = kb.activeProv
+    ? (kb.featPerActive >= 10 ? kb.featPerActive.toFixed(1) : kb.featPerActive.toFixed(2))
+    : 'â€”';
+  const favgSub = kb.activeProv ? 'mean Â· active providers only' : 'no active providers';
+  const practicesSub = FC.length === activePracticesForDashboard().length && kb.pracN === countEligiblePractices()
+    ? 'all billing practices'
+    : 'practices in filter';
+  const rosterSub = 'active + inactive in filter';
+  return { kpiSet, kb, sumEnc, sumFeat, sumAI, wExec, volumeSub, activeSub, inactiveSub, favgVal, favgSub, practicesSub, rosterSub, fullR, dSpan };
+}
+
+function setKpiEl(id, text){
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+/** Populate the shared 5 KPI tiles (practices, roster, active, inactive, avg features). */
+function applySharedKpiStrip(ids){
+  const dk = buildDashboardKpis();
+  const kb = dk.kb;
+  setKpiEl(ids.prac, fmtFull(kb.pracN));
+  setKpiEl(ids.pracSub, dk.practicesSub);
+  setKpiEl(ids.roster, fmtFull(kb.roster));
+  setKpiEl(ids.rosterSub, dk.rosterSub);
+  setKpiEl(ids.active, fmtFull(kb.activeProv));
+  setKpiEl(ids.activeSub, dk.activeSub);
+  setKpiEl(ids.inactive, fmtFull(kb.noneProv));
+  setKpiEl(ids.inactiveSub, dk.inactiveSub);
+  setKpiEl(ids.favg, dk.favgVal);
+  setKpiEl(ids.favgSub, dk.favgSub);
+  return dk;
+}
+
+/** Practices in filter for encounters table (optional team sub-filter). */
+function practicesForEncountersView(){
+  return buildDashboardKpis().kpiSet;
+}
+
+/** Subtitle for Active treating providers KPIs (trailing â‰¤30d activity window in slicer, provDaily). */
+function getActiveProvidersKpiSubtitle(){
+  const w = getExec30dWindow();
+  if (!w.nDays) return 'Set date range for activity window';
+  const winBit = w.nDays < 30
+    ? (w.nDays + 'd Â· ' + formatDateShort(w.startStr) + 'â€“' + formatDateShort(w.endStr))
+    : ('up to 30d ending ' + formatDateShort(w.endStr));
+  return 'â‰¥1 consult-complete or feature Â· ' + winBit;
+}
+function formatDate(s){
+  if (!s) return 'â€”';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+}
+function formatDateShort(s){
+  if (!s) return 'â€”';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+}
+function escapeHtml(s){
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+/** Prefer company name; if missing/numeric-only, use first treating provider or Practice {BPN}. */
+function practiceDisplayName(p){
+  if (!p) return '-';
+  const raw = String(p.name || '').trim();
+  const bpn = p.bpn != null ? String(p.bpn) : '';
+  const looksNumeric = !!raw && /^\d+$/.test(raw);
+  if (raw && !looksNumeric) return raw;
+  const provs = p.providers || [];
+  for (const pr of provs){
+    const n = String(pr.name || '').trim();
+    if (n && !/^\d+$/.test(n) && !/^Provider\s/i.test(n)) return n;
+  }
+  if (bpn) return 'Practice ' + bpn;
+  return raw || '-';
+}
+
+/** For HTML attribute values (e.g. data-prov-key). */
+function escapeHtmlAttr(s){
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;').replace(/</g,'&lt;');
+}
+
+function openProviderFeaturesFromBtn(btn){
+  const k = btn.getAttribute('data-prov-key');
+  if (k !== null && k !== '') openProviderFeatures(k);
+}
+
+function providerHasActivityInSlicerWindow(pr){
+  if (!SLICER || !SLICER.dates || !SLICER.dates.length) return true;
+  if (typeof slicerIsFullRange === 'function' && slicerIsFullRange()) return true;
+  const recs = (DATA.provDaily && pr.provKey && DATA.provDaily[pr.provKey]) || [];
+  for (let i = 0; i < recs.length; i++){
+    const r = recs[i];
+    if (r[0] < SLICER.startIdx || r[0] > SLICER.endIdx) continue;
+    const feat = r[2] || 0, noise = r[10] || 0;
+    if (feat > 0 || noise > 0) return true;
+  }
+  return false;
+}
+
+function providersForTablePanel(p){
+  const all = p.providers || [];
+  const roster = all.length;
+  if (!SLICER || !SLICER.dates || !SLICER.dates.length || (typeof slicerIsFullRange === 'function' && slicerIsFullRange())){
+    return { list: all, shown: roster, roster };
+  }
+  const list = all.filter(providerHasActivityInSlicerWindow);
+  return { list, shown: list.length, roster };
+}
+
+function encounterTableProviderCountHtml(p){
+  const { shown, roster } = providersForTablePanel(p);
+  if (!SLICER || !SLICER.dates || !SLICER.dates.length || (typeof slicerIsFullRange === 'function' && slicerIsFullRange())){
+    return String(roster);
+  }
+  return `${shown}<span style="font-size:10px;color:var(--slate-600);font-variant-numeric:tabular-nums"> / ${roster}</span>`;
+}
+
+function practiceEncAvgPerDayHtml(p){
+  const days = slicerDaySpan();
+  if (!days || !p || !p.enc) return 'â€”';
+  const avg = p.enc / days;
+  return avg >= 100 ? fmt(Math.round(avg)) : avg.toFixed(1);
+}
+
+function bcViewProviderCountHtml(p){
+  const { shown, roster } = providersForTablePanel(p);
+  if (!SLICER || !SLICER.dates || !SLICER.dates.length || (typeof slicerIsFullRange === 'function' && slicerIsFullRange())){
+    return `<strong style="color:var(--brand-purple);font-variant-numeric:tabular-nums">${roster}</strong>`;
+  }
+  return `<strong style="color:var(--brand-purple);font-variant-numeric:tabular-nums">${shown}</strong><span style="font-size:10px;color:var(--slate-600);font-variant-numeric:tabular-nums"> / ${roster}</span>`;
+}
+
+function statusBadge(s){
+  const STATUS_TIPS = {
+    'Active':               'Practice is live and actively using the platform',
+    'In Progress':          'Onboarding or implementation currently in progress',
+    'Inactive':             'Practice is not currently active on the platform',
+    'Paused':               'Temporarily paused â€” not in active use',
+    'On Hold':              'On hold â€” pending a decision or action',
+    'Cancelled':            'Contract or agreement has been cancelled',
+    'Pending Cancellation': 'Cancellation request submitted, awaiting processing',
+    'Rejected':             'Application or request was rejected',
+  };
+  const cls = ({
+    'Active':'b-active', 'In Progress':'b-progress', 'Inactive':'b-inactive',
+    'Paused':'b-paused', 'On Hold':'b-paused', 'Cancelled':'b-cancel',
+    'Pending Cancellation':'b-cancel', 'Rejected':'b-rejected'
+  })[s] || 'b-unknown';
+  const tip = STATUS_TIPS[s] || 'Unknown status';
+  return `<span class="badge ${cls}" title="${escapeHtml(tip)}">${escapeHtml(s||'Unknown')}</span>`;
+}
+function companyStatusBadge(s){
+  const label = String(s || '').trim();
+  if (!label || label === 'â€”' || label.toLowerCase() === 'unknown' || looksLikeProductTier(label)) {
+    return '<span class="badge b-unknown" title="Company status from BCOwnership column E (Active, Suspended, Ex-Client, etc.)">â€”</span>';
+  }
+  const tip = 'Company status (BCOwnership column E) â€” Active, Suspended, Ex-Client, Cancelled, etc.';
+  const cls = ({
+    'Active':'b-active', 'Trial':'b-active', 'In Progress':'b-progress',
+    'Inactive':'b-inactive', 'Paused':'b-paused', 'On Hold':'b-paused',
+    'Suspended':'b-paused', 'Cancelled':'b-cancel', 'System Cancelled':'b-cancel',
+    'Ex-Client':'b-cancel', 'Rejected':'b-rejected', 'Archive':'b-inactive',
+    'Pending Cancellation':'b-cancel',
+  })[label] || 'b-unknown';
+  return `<span class="badge ${cls}" title="${escapeHtml(tip)}">${escapeHtml(label)}</span>`;
+}
+function pmaBadge(p){
+  return p === 'Nova'
+    ? '<span class="badge b-pma-nova" title="Nova â€” modern cloud-based PMA platform">Nova</span>'
+    : '<span class="badge b-pma-mps" title="myMPS â€” standard PMA platform">myMPS</span>';
+}
+const PERSONA_DEFS = {
+  'Power Clinical User':   { cls: 'b-power',     tip: '20-30 clinical active days in a 30-day period' },
+  'Active Clinical User':  { cls: 'b-standard',  tip: '10-19 clinical active days in a 30-day period' },
+  'Low Clinical User':     { cls: 'b-casual',    tip: '1-9 clinical active days in a 30-day period' },
+  'Standard Clinical User':{ cls: 'b-standard',  tip: 'Legacy label - now Active Clinical User' },
+  'Casual User':           { cls: 'b-casual',    tip: 'Legacy label - now Low Clinical User' },
+  'Light Clinical User':   { cls: 'b-casual',    tip: 'Legacy label - now Low Clinical User' },
+  'Inactive':              { cls: 'b-inactive-p',tip: 'Legacy label â€” persona is based on clinical usage only' },
+  'Dormant':               { cls: 'b-inactive-p',tip: '0 clinical active days in the selected 30-day window' },
+};
+function personaBadge(p){
+  const def = PERSONA_DEFS[p] || { cls: 'b-casual', tip: p };
+  return `<span class="badge ${def.cls}" title="${escapeHtml(def.tip)}">${escapeHtml(p)}</span>`;
+}
+function engagementBadge(e){
+  if (e === 'encounter')    return '<span class="badge b-eng-enc"  title="At least one consult-complete event in the selected window">Encounter</span>';
+  if (e === 'feature_only') return '<span class="badge b-eng-feat" title="Used platform features but no consult-complete events recorded">Feature-only</span>';
+  return '<span class="badge b-eng-inactive" title="No events of any kind recorded in the selected date window">No activity</span>';
+}
+function versionChip(v, latest, on){
+  if (!v) return '<span class="badge b-ver-none">â€”</span>';
+  if (on) return `<span class="badge b-ver-ok">${escapeHtml(v)} âœ“</span>`;
+  return `<span class="badge b-ver-old">${escapeHtml(v)}</span>`;
+}
+
+
+/** Leading numeric semver prefix â€” matches generate_dashboard_data.py */
+function appVersionTupleStr(s){
+  if (s === null || s === undefined) return null;
+  const m = String(s).trim().match(/^(\d+(?:\.\d+)*)/);
+  if (!m) return null;
+  return m[1].split('.').map(x => parseInt(x, 10));
+}
+
+function appVersionsSemverEqual(appVer, latestVer){
+  const ta = appVersionTupleStr(appVer);
+  const tb = appVersionTupleStr(latestVer);
+  if (ta !== null && tb !== null){
+    const n = Math.max(ta.length, tb.length);
+    for (let i = 0; i < n; i++){
+      const va = i < ta.length ? ta[i] : 0;
+      const vb = i < tb.length ? tb[i] : 0;
+      if (va !== vb) return false;
+    }
+    return true;
+  }
+  return String(appVer || '').trim() === String(latestVer || '').trim();
+}
+
+/** Prefer prov.onLatest from bundle when present; else semver-match against metadata latest */
+function providerOnLatest(prov, latestMeta){
+  const latest = latestMeta !== undefined && latestMeta !== null ? String(latestMeta).trim() : '';
+  if (!prov || !prov.appVer || !latest) return false;
+  if (prov.onLatest === true) return true;
+  if (prov.onLatest === false) return false;
+  return appVersionsSemverEqual(prov.appVer, latest);
+}
+
+function severityBadge(s){
+  const map = {cr:'Critical', wa:'Warning', in:'Info'};
+  const cls = `b-sev-${s}`;
+  return `<span class="badge ${cls}">${map[s]||s}</span>`;
+}
+
+/* Friendly feature labels â€” converts raw event keys to human-readable */
+const FEATURE_LABELS = {
+  "AlgoliaSearch-Medicine-Search": "Algoliasearch Medicine Search",
+  "ai-clinical-assistant-opened": "Ai Clinical Assistant Opened",
+  "ai-prompt-submitted": "Ai Prompt Submitted",
+  "ai-suggestion-accepted": "Ai Suggestion Accepted",
+  "ai-summary-generated": "Ai Summary Generated",
+  "appointment-cancelled": "Appointment Cancelled",
+  "appointment-checked-in": "Appointment Checked In",
+  "appointment-created": "Appointment Created",
+  "appointment-updated": "Appointment Updated",
+  "consult-complete": "Consult Complete",
+  "consult-diagnosis-added": "Consult Diagnosis Added",
+  "consult-history-saved": "Consult History Saved",
+  "consult-plan-created": "Consult Plan Created",
+  "consult-quick-note": "Consult Quick Note",
+  "health-screening-completed": "Health Screening Completed",
+  "medical-certificate-toggled": "Medical Certificate Toggled",
+  "medication-prescribed": "Medication Prescribed",
+  "medication-script-printed": "Medication Script Printed",
+  "medication-script-saved": "Medication Script Saved",
+  "nora-opened": "Nora Opened",
+  "nora-query-submitted": "Nora Query Submitted",
+  "nora-suggestion-accepted": "Nora Suggestion Accepted",
+  "pathology-form-opened": "Pathology Form Opened",
+  "pathology-form-submitted": "Pathology Form Submitted",
+  "pathology-request-sent": "Pathology Request Sent",
+  "pathology-test-selected": "Pathology Test Selected",
+  "patient-card-opened": "Patient Card Opened",
+  "patient-created": "Patient Created",
+  "patient-file-talking-points-updated": "Patient File Talking Points Updated",
+  "patient-notes-saved": "Patient Notes Saved",
+  "patient-search-performed": "Patient Search Performed",
+  "preferences-saved": "Preferences Saved",
+  "preventative-care-screening": "Preventative Care Screening",
+  "reminder-set": "Reminder Set",
+  "script-item-added": "Script Item Added",
+  "script-item-removed": "Script Item Removed",
+  "settings-updated": "Settings Updated",
+  "sidebar-encounter-summary-opened": "Sidebar Encounter Summary Opened",
+  "sidebar-opened": "Sidebar Opened",
+  "smart-generic-medicine-selected": "Smart Generic Medicine Selected",
+  "task-completed": "Task Completed",
+  "task-created": "Task Created",
+  "template-saved": "Template Saved",
+  "timeline-quick-note-added": "Timeline Quick Note Added",
+  "vaccination-recorded": "Vaccination Recorded"
+};
+
+const FEAT_CAT_PREFIX_RULES = [
+  { prefix: "icd10-", category: "2. Clinical Doc" },
+  { prefix: "nora-", category: "5. AI Features" },
+  { prefix: "ai-", category: "5. AI Features" }
+];
+
+const FEATURE_CATEGORY_MAP = {
+  "AlgoliaSearch-Medicine-Search": "3. Scripts",
+  "ai-clinical-assistant-opened": "5. AI Features",
+  "ai-prompt-submitted": "5. AI Features",
+  "ai-suggestion-accepted": "5. AI Features",
+  "ai-summary-generated": "5. AI Features",
+  "appointment-cancelled": "7. Task Management",
+  "appointment-checked-in": "7. Task Management",
+  "appointment-created": "7. Task Management",
+  "appointment-updated": "7. Task Management",
+  "consult-complete": "1. Encounters",
+  "consult-diagnosis-added": "2. Clinical Doc",
+  "consult-history-saved": "2. Clinical Doc",
+  "consult-plan-created": "2. Clinical Doc",
+  "consult-quick-note": "2. Clinical Doc",
+  "health-screening-completed": "6. Preventative Care",
+  "medical-certificate-toggled": "2. Clinical Doc",
+  "medication-prescribed": "3. Scripts",
+  "medication-script-printed": "3. Scripts",
+  "medication-script-saved": "3. Scripts",
+  "nora-opened": "5. AI Features",
+  "nora-query-submitted": "5. AI Features",
+  "nora-suggestion-accepted": "5. AI Features",
+  "pathology-form-opened": "4. Pathology",
+  "pathology-form-submitted": "4. Pathology",
+  "pathology-request-sent": "4. Pathology",
+  "pathology-test-selected": "4. Pathology",
+  "patient-card-opened": "9. Noise / Passive",
+  "patient-created": "7. Task Management",
+  "patient-file-talking-points-updated": "2. Clinical Doc",
+  "patient-notes-saved": "2. Clinical Doc",
+  "patient-search-performed": "7. Task Management",
+  "preferences-saved": "8. Customization",
+  "preventative-care-screening": "6. Preventative Care",
+  "reminder-set": "7. Task Management",
+  "script-item-added": "3. Scripts",
+  "script-item-removed": "3. Scripts",
+  "settings-updated": "8. Customization",
+  "sidebar-encounter-summary-opened": "2. Clinical Doc",
+  "sidebar-opened": "9. Noise / Passive",
+  "smart-generic-medicine-selected": "3. Scripts",
+  "task-completed": "7. Task Management",
+  "task-created": "7. Task Management",
+  "template-saved": "8. Customization",
+  "timeline-quick-note-added": "2. Clinical Doc",
+  "vaccination-recorded": "6. Preventative Care"
+};
+
+function classifyFeatureEvent(raw){
+  const name = String(raw || '').trim();
+  if (!name) return '9. Noise / Passive';
+  if (FEATURE_CATEGORY_MAP[name]) return FEATURE_CATEGORY_MAP[name];
+  const low = name.toLowerCase();
+  for (const rule of FEAT_CAT_PREFIX_RULES){
+    if (low.startsWith(String(rule.prefix || '').toLowerCase())) return rule.category;
+  }
+  return '9. Noise / Passive';
+}
+
+function featLabel(raw){
+  if (!raw) return '';
+  if (FEATURE_LABELS[raw]) return FEATURE_LABELS[raw];
+  // Fallback: humanise dash-cased keys
+  return raw.replace(/-/g,' ').replace(/_/g,' ')
+    .replace(/\b\w/g,c => c.toUpperCase());
+}
+
+/* Tab switching */
+function switchTab(name, el){
+  CURRENT_TAB = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('s-'+name).classList.add('active');
+  // Refresh chart sizing on visible section
+  setTimeout(() => {
+    Object.values(charts).forEach(c => { try { c.resize(); } catch(e){} });
+  }, 50);
+  // Render section
+  if (name === 'exec') renderExec();
+  else if (name === 'overview') renderOverview();
+  else if (name === 'encounters') renderEncounters();
+  else if (name === 'features') renderFeatures();
+  else if (name === 'bcview') renderBCView();
+  else if (name === 'anomalies') renderAnomalies();
+  else if (name === 'bctoolkit' && typeof renderBCToolkit === 'function') renderBCToolkit();
+  else if (name === 'qa' && typeof renderQA === 'function') renderQA();
+  else if (name === 'defs') renderDefs();
+  if (TRACKING_ENABLED) trackUsageEvent('tab_view', name, { label: el ? el.textContent.trim() : name });
+}
+
+
+/* Multi-select BC / team filters */
+function toggleMsPanel(id){
+  const panel = document.getElementById(id + '-panel');
+  if (!panel) return;
+  const open = panel.classList.toggle('open');
+  document.querySelectorAll('.ms-panel.open').forEach(p => {
+    if (p !== panel) p.classList.remove('open');
+  });
+  if (open) panel.classList.add('open');
+}
+
+function closeMsPanels(){
+  document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+}
+
+function getMultiFilterValues(id){
+  const root = document.getElementById(id + '-options');
+  if (!root) return [];
+  const vals = [];
+  root.querySelectorAll('input[type=checkbox]:checked').forEach(cb => {
+    if (cb.value) vals.push(cb.value);
+  });
+  return vals;
+}
+
+function updateMsButton(id, placeholder){
+  const btn = document.getElementById(id + '-btn');
+  if (!btn) return;
+  const vals = getMultiFilterValues(id);
+  if (!vals.length){
+    btn.textContent = placeholder;
+    return;
+  }
+  if (vals.length === 1) btn.textContent = vals[0].length > 28 ? vals[0].slice(0, 26) + 'â€¦' : vals[0];
+  else btn.textContent = vals.length + ' selected';
+}
+
+function onMsFilterChange(id, placeholder){
+  updateMsButton(id, placeholder);
+  applyFilters();
+}
+
+function clearMsFilter(id, placeholder){
+  const root = document.getElementById(id + '-options');
+  if (!root) return;
+  root.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; });
+  updateMsButton(id, placeholder);
+}
+
+function selectAllMsFilter(id, placeholder){
+  const root = document.getElementById(id + '-options');
+  if (!root) return;
+  root.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = true; });
+  updateMsButton(id, placeholder);
+}
+
+function populateMultiFilter(id, list, placeholder){
+  const root = document.getElementById(id + '-options');
+  if (!root) return;
+  root.innerHTML = '';
+  list.forEach(v => {
+    const lbl = document.createElement('label');
+    lbl.className = 'ms-opt';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = v;
+    cb.addEventListener('change', () => onMsFilterChange(id, placeholder));
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(v));
+    root.appendChild(lbl);
+  });
+  updateMsButton(id, placeholder);
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms')) closeMsPanels();
+});
+
+/* ============================================================
+   Filters
+   ============================================================ */
+function populateFilters(){
+  populateMultiFilter('f-bc', DATA.lists.bcs || [], 'All BCs');
+  populateMultiFilter('f-team', DATA.lists.teams || [], 'All teams');
+}
+
+function normalizeIdDigits(v){
+  if (v == null || v === '') return '';
+  const d = String(v).replace(/\D/g, '');
+  if (!d) return '';
+  return d.replace(/^0+/, '') || '0';
+}
+
+function applyFilters(){
+  const bcVals = getMultiFilterValues('f-bc');
+  const teamVals = getMultiFilterValues('f-team');
+  const pma = document.getElementById('f-pma').value;
+  const eng = document.getElementById('f-eng').value;
+  const qRaw = document.getElementById('f-q').value.trim();
+  const q = qRaw.toLowerCase();
+
+  const _sliced = aggregateAllForSlice();
+  const isNumericQuery = /^\d+$/.test(qRaw);
+  const qNorm = isNumericQuery ? normalizeIdDigits(qRaw) : '';
+  const bpnNormSet = new Set(
+    activePracticesForDashboard().map(p => normalizeIdDigits(p.bpn)).filter(Boolean)
+  );
+  const qIsKnownBpn = !!(qNorm && bpnNormSet.has(qNorm));
+
+  FC = _sliced.filter(p => {
+    if (isCancelledPractice(p)) return false;
+    if (bcVals.length && !bcVals.includes(p.bc || '')) return false;
+    if (teamVals.length && !teamVals.includes(p.team || '')) return false;
+    if (pma && p.pma !== pma) return false;
+    if (eng && p.engagement !== eng) return false;
+    if (q){
+      if (isNumericQuery && qNorm){
+        if (qIsKnownBpn){
+          if (normalizeIdDigits(p.bpn) !== qNorm) return false;
+        } else {
+          const tpns = (p.providers || []).map(pr => normalizeIdDigits(pr.tpn));
+          if (!tpns.some(t => t === qNorm)) return false;
+        }
+      } else {
+        const hay = [
+          p.name, p.bpn, p.bc, p.team, p.speciality, p.appVer,
+          ...((p.providers||[]).flatMap(pr => [pr.name, pr.tpn]))
+        ].join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+    }
+    return true;
+  });
+
+  refreshKpiDailyBpnSet();
+
+  // Update result count
+  const all = activePracticesForDashboard().length;
+  const txt = FC.length === all
+    ? `Showing all <strong>${fmtFull(all)}</strong> clients`
+    : `Showing <strong>${fmtFull(FC.length)}</strong> of ${fmtFull(all)} clients`;
+  document.getElementById('filter-result').innerHTML = txt;
+
+  // Re-render current tab (badge/labels still update if a chart render fails)
+  try {
+    if (CURRENT_TAB === 'exec') renderExec();
+    else if (CURRENT_TAB === 'overview') renderOverview();
+    else if (CURRENT_TAB === 'encounters') renderEncounters();
+    else if (CURRENT_TAB === 'features') renderFeatures();
+    else if (CURRENT_TAB === 'bcview') renderBCView();
+    else if (CURRENT_TAB === 'anomalies') renderAnomalies();
+    else if (CURRENT_TAB === 'qa' && typeof renderQA === 'function') renderQA();
+  } catch (err) {
+    console.error('Dashboard render failed for tab ' + CURRENT_TAB + ':', err);
+  }
+
+  // Update anomaly tab badge based on filtered set
+  const anomCount = computeAnomCounts(fcForKpiStats()).total;
+  const anomEl = document.getElementById('anom-tab-count');
+  if (anomEl) anomEl.textContent = anomCount;
+  updateSlicerDependentLabels();
+  trackFilterChange();
+}
+
+function clearFilters(){
+  clearMsFilter('f-bc', 'All BCs');
+  clearMsFilter('f-team', 'All teams');
+  document.getElementById('f-pma').value = '';
+  document.getElementById('f-eng').value = '';
+  document.getElementById('f-q').value = '';
+  applyFilters();
+  if (TRACKING_ENABLED) trackUsageEvent('filters_clear', CURRENT_TAB, {});
+}
+
+/* ============================================================
+   Anomaly counts (re-computed for filtered set)
+   ============================================================ */
+function computeAnomCounts(set){
+  let noBc = 0, noEnc = 0;
+  for (const p of set){
+    if (!p.bc && (p.enc > 0 || p.feat > 0)) noBc++;
+    else if (p.status === 'Active' && p.bc && p.enc === 0 && p.feat > 100) noEnc++;
+  }
+  return { noBc, noEnc, total: noBc + noEnc };
+}
+
+/* ============================================================
+   Chart helpers
+   ============================================================ */
+function getCss(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+const CHART_FONT = "Figtree, system-ui, sans-serif";
 function applyChartDefaults(){
   if (!window.Chart) return;
   Chart.defaults.font.family = CHART_FONT;
