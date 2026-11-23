@@ -380,14 +380,14 @@ function dedupeDashboardProviders(){
 }
 
 
-/** Test/demo billing practices â€” excluded from portfolio KPIs & aggregate charts (still searchable). */
+/** Test/demo billing practices — excluded from portfolio KPIs & aggregate charts (still searchable). */
 const BPN_EXCLUDE_FROM_KPI = new Set([111, 112, 9876543, 1230000]);
 function isExcludedKpiBpn(bpn){ return BPN_EXCLUDE_FROM_KPI.has(Number(bpn)); }
 function fcForKpiStats(){ return FC.filter(p => !isExcludedKpiBpn(p.bpn)); }
 function countEligiblePractices(){
   return activePracticesForDashboard().filter(p => !isExcludedKpiBpn(p.bpn)).length;
 }
-/** BPN keys in fcForKpiStats() â€” daily KPI charts aggregate only these practices. */
+/** BPN keys in fcForKpiStats() — daily KPI charts aggregate only these practices. */
 let _kpiDailyBpnSet = null;
 function refreshKpiDailyBpnSet(){
   _kpiDailyBpnSet = new Set(fcForKpiStats().map(p => String(p.bpn)));
@@ -406,7 +406,7 @@ function aggregateBpnDailyAtDateIdx(di){
   if (!bd) return null;
   for (const k of kpiDailyBpnKeys()){
     const recs = bd[k];
-    // Ownership-only sites (no telemetry) have no bpnDaily rows â€” skip safely.
+    // Ownership-only sites (no telemetry) have no bpnDaily rows — skip safely.
     if (!recs || !recs.length) continue;
     let lo = 0, hi = recs.length - 1, found = null;
     while (lo <= hi){
@@ -431,7 +431,7 @@ function aggregateBpnDailyAtDateIdx(di){
     evClin, evScripts, evPath, evAI, evPrev, evTask, evCust, evNoise,
   };
 }
-/** Daily series for KPI charts â€” excludes test practices (see dailyForSlice for raw totals). */
+/** Daily series for KPI charts — excludes test practices (see dailyForSlice for raw totals). */
 function dailyForSliceKpi(){
   const out = [];
   if (!SLICER || !SLICER.dates || SLICER.endIdx < SLICER.startIdx) return out;
@@ -442,7 +442,7 @@ function dailyForSliceKpi(){
   return out;
 }
 
-/* Feature categories â€” generated from generate_dashboard_data.py */
+/* Feature categories — generated from generate_dashboard_data.py */
 const ALL_FEAT_CATS = [
   "1. Encounters",
   "2. Clinical Doc",
@@ -458,7 +458,7 @@ const MEANINGFUL_FEAT_CATS = ALL_FEAT_CATS.filter(c => c !== '9. Noise / Passive
 const FEAT_CATS = ALL_FEAT_CATS;
 let SELECTED_FEAT_CATS = [...FEAT_CATS];
 var charts = window.charts = window.charts || {};  // shared Chart.js registry (lexical + window)
-/** Single shared login â€” data refresh is via generate_dashboard_data.py (not this UI). */
+/** Single shared login — data refresh is via generate_dashboard_data.py (not this UI). */
 const DASHBOARD_PASSWORD = 'HbC@BC2026';
 const SESSION_KEY = 'hbc_dashboard_ok';
 const SESSION_EMAIL_KEY = 'hbc_dashboard_email';
@@ -589,7 +589,12 @@ function enterApp(entryEvent){
   if (_stale) _stale.remove();
   window._openModalKey = null;
 
-  document.getElementById('data-period').textContent = formatDate(DATA.stats.dataPeriodEnd);
+  const _periodEnd = formatDate(DATA.stats.dataPeriodEnd);
+  document.getElementById('data-period').textContent = _periodEnd;
+  const _lagDate = document.getElementById('lag-date');
+  if (_lagDate) _lagDate.textContent = _periodEnd;
+  const _alDate = document.getElementById('al-date');
+  if (_alDate) _alDate.textContent = _periodEnd;
 
   const _lr = document.getElementById('hdr-last-refresh');
   if (_lr) {
@@ -601,7 +606,7 @@ function enterApp(entryEvent){
     } else if (DATA.generatedAt) {
       const d = new Date(DATA.generatedAt);
       _lr.textContent = isNaN(d.getTime()) ? String(DATA.generatedAt) : d.toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' });
-    } else _lr.textContent = 'â€”';
+    } else _lr.textContent = '—';
   }
 
   populateFilters();
@@ -620,14 +625,14 @@ function enterApp(entryEvent){
    Helpers
    ============================================================ */
 function fmt(n){
-  if (n === null || n === undefined || isNaN(n)) return 'â€”';
+  if (n === null || n === undefined || isNaN(n)) return '—';
   if (typeof n !== 'number') n = Number(n);
   if (n >= 1_000_000) return (n/1_000_000).toFixed(1).replace(/\.0$/,'') + 'M';
   if (n >= 1_000) return (n/1_000).toFixed(1).replace(/\.0$/,'') + 'k';
   return n.toLocaleString();
 }
 function fmtFull(n){
-  if (n === null || n === undefined || isNaN(n)) return 'â€”';
+  if (n === null || n === undefined || isNaN(n)) return '—';
   return Number(n).toLocaleString();
 }
 function pct(n,d){
@@ -660,30 +665,49 @@ function getExec30dWindow(){
 }
 
 /** consult-complete (enc) and meaningful feature total (feat) in the executive window, from provDaily. */
-function provider30dEncFeatFromDaily(provKey){
+/** Resolve all provDaily keys for a treating provider (canonical + merged aliases). */
+function providerDailyKeys(prOrKey){
+  if (prOrKey && typeof prOrKey === 'object'){
+    const keys = (prOrKey.provKeys && prOrKey.provKeys.length)
+      ? prOrKey.provKeys
+      : (prOrKey.provKey ? [prOrKey.provKey] : []);
+    return keys.map(String).filter(Boolean);
+  }
+  return prOrKey ? [String(prOrKey)] : [];
+}
+function forEachProvDailyRecord(prOrKey, fn){
+  const keys = providerDailyKeys(prOrKey);
+  const seen = new Set();
+  for (const k of keys){
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const recs = (DATA.provDaily && DATA.provDaily[k]) || [];
+    for (let i = 0; i < recs.length; i++) fn(recs[i], k);
+  }
+}
+
+function provider30dEncFeatFromDaily(prOrKey){
   const w = getExec30dWindow();
   if (!w.nDays) return { enc: 0, feat: 0 };
-  const recs = (DATA.provDaily && provKey && DATA.provDaily[provKey]) || [];
   let enc = 0, feat = 0;
-  for (const r of recs){
-    if (r[0] < w.fromIdx || r[0] > w.toIdx) continue;
+  forEachProvDailyRecord(prOrKey, function(r){
+    if (r[0] < w.fromIdx || r[0] > w.toIdx) return;
     enc += (r[1] || 0);
     feat += (r[2] || 0);
-  }
+  });
   return { enc, feat };
 }
 
 
 function providerClinicalActiveDaysInWindow(pr){
   const w = getExec30dWindow();
-  if (!w.nDays || !pr || !pr.provKey) return 0;
-  const recs = (DATA.provDaily && DATA.provDaily[pr.provKey]) || [];
-  let days = 0;
-  for (const r of recs){
-    if (r[0] < w.fromIdx || r[0] > w.toIdx) continue;
-    if ((r[1] || 0) > 0) days++;
-  }
-  return days;
+  if (!w.nDays || !pr) return 0;
+  const daySet = new Set();
+  forEachProvDailyRecord(pr, function(r){
+    if (r[0] < w.fromIdx || r[0] > w.toIdx) return;
+    if ((r[1] || 0) > 0) daySet.add(r[0]);
+  });
+  return daySet.size;
 }
 
 function personaFromClinicalActiveDays(days, inactive){
@@ -721,12 +745,12 @@ function isValidCompanyStatusValue(s){
 }
 
 function companyStatusLabel(p){
-  if (!p) return 'â€”';
+  if (!p) return '—';
   const c = (p.companyStatus || '').trim();
   if (isValidCompanyStatusValue(c)) return c;
   const s = (p.status || '').trim();
   if (isValidCompanyStatusValue(s)) return s;
-  return 'â€”';
+  return '—';
 }
 const CANCELLED_STATUS_VALUES = new Set([
   'cancelled', 'canceled',
@@ -792,7 +816,7 @@ function providerEngagementSplit(practices){
   let encProv = 0, featProv = 0, noneProv = 0;
   for (const p of practices){
     for (const pr of (p.providers || [])){
-      const { enc, feat } = provider30dEncFeatFromDaily(pr.provKey);
+      const { enc, feat } = provider30dEncFeatFromDaily(pr);
       if (enc > 0) encProv++;
       else if (feat > 0) featProv++;
       else noneProv++;
@@ -801,19 +825,19 @@ function providerEngagementSplit(practices){
   return { encProv, featProv, noneProv };
 }
 
-/** Meaningful feature-event sum in the exec window for providers active there (â‰¥1 consult-complete or â‰¥1 feature event). */
+/** Meaningful feature-event sum in the exec window for providers active there (≥1 consult-complete or ≥1 feature event). */
 function sumFeatEventsActiveProviders(practices){
   let sum = 0;
   for (const p of practices){
     for (const pr of (p.providers || [])){
-      const { enc, feat } = provider30dEncFeatFromDaily(pr.provKey);
+      const { enc, feat } = provider30dEncFeatFromDaily(pr);
       if (enc > 0 || feat > 0) sum += feat;
     }
   }
   return sum;
 }
 
-/** Unified KPI counts â€” activity window is trailing up to 30d within the date slicer (provDaily). */
+/** Unified KPI counts — activity window is trailing up to 30d within the date slicer (provDaily). */
 function kpiBundleForFilteredPractices(set){
   const sp = providerEngagementSplit(set);
   const encProv = sp.encProv, featProv = sp.featProv, noneProv = sp.noneProv;
@@ -828,7 +852,7 @@ function kpiBundleForFilteredPractices(set){
   };
 }
 
-/** Single source for cross-tab KPIs â€” same filtered practice set and definitions everywhere. */
+/** Single source for cross-tab KPIs — same filtered practice set and definitions everywhere. */
 function buildDashboardKpis(){
   const kpiSet = fcForKpiStats();
   const kb = kpiBundleForFilteredPractices(kpiSet);
@@ -842,14 +866,14 @@ function buildDashboardKpis(){
   const fullR = slicerIsFullRange();
   const dSpan = slicerDaySpan();
   const volumeSub = fullR
-    ? 'filtered practices Â· full data period'
-    : ('filtered practices Â· ' + dSpan + 'd in range');
+    ? 'filtered practices · full data period'
+    : ('filtered practices · ' + dSpan + 'd in range');
   const activeSub = getActiveProvidersKpiSubtitle();
-  const inactiveSub = kb.roster ? (pct(kb.noneProv, kb.roster) + ' of roster') : 'â€”';
+  const inactiveSub = kb.roster ? (pct(kb.noneProv, kb.roster) + ' of roster') : '—';
   const favgVal = kb.activeProv
     ? (kb.featPerActive >= 10 ? kb.featPerActive.toFixed(1) : kb.featPerActive.toFixed(2))
-    : 'â€”';
-  const favgSub = kb.activeProv ? 'mean Â· active providers only' : 'no active providers';
+    : '—';
+  const favgSub = kb.activeProv ? 'mean · active providers only' : 'no active providers';
   const practicesSub = FC.length === activePracticesForDashboard().length && kb.pracN === countEligiblePractices()
     ? 'all billing practices'
     : 'practices in filter';
@@ -884,23 +908,23 @@ function practicesForEncountersView(){
   return buildDashboardKpis().kpiSet;
 }
 
-/** Subtitle for Active treating providers KPIs (trailing â‰¤30d activity window in slicer, provDaily). */
+/** Subtitle for Active treating providers KPIs (trailing ≤30d activity window in slicer, provDaily). */
 function getActiveProvidersKpiSubtitle(){
   const w = getExec30dWindow();
   if (!w.nDays) return 'Set date range for activity window';
   const winBit = w.nDays < 30
-    ? (w.nDays + 'd Â· ' + formatDateShort(w.startStr) + 'â€“' + formatDateShort(w.endStr))
+    ? (w.nDays + 'd · ' + formatDateShort(w.startStr) + '–' + formatDateShort(w.endStr))
     : ('up to 30d ending ' + formatDateShort(w.endStr));
-  return 'â‰¥1 consult-complete or feature Â· ' + winBit;
+  return '≥1 consult-complete or feature · ' + winBit;
 }
 function formatDate(s){
-  if (!s) return 'â€”';
+  if (!s) return '—';
   const d = new Date(s);
   if (isNaN(d)) return s;
   return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 }
 function formatDateShort(s){
-  if (!s) return 'â€”';
+  if (!s) return '—';
   const d = new Date(s);
   if (isNaN(d)) return s;
   return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
@@ -943,14 +967,14 @@ function openProviderFeaturesFromBtn(btn){
 function providerHasActivityInSlicerWindow(pr){
   if (!SLICER || !SLICER.dates || !SLICER.dates.length) return true;
   if (typeof slicerIsFullRange === 'function' && slicerIsFullRange()) return true;
-  const recs = (DATA.provDaily && pr.provKey && DATA.provDaily[pr.provKey]) || [];
-  for (let i = 0; i < recs.length; i++){
-    const r = recs[i];
-    if (r[0] < SLICER.startIdx || r[0] > SLICER.endIdx) continue;
+  let hit = false;
+  forEachProvDailyRecord(pr, function(r){
+    if (hit) return;
+    if (r[0] < SLICER.startIdx || r[0] > SLICER.endIdx) return;
     const feat = r[2] || 0, noise = r[10] || 0;
-    if (feat > 0 || noise > 0) return true;
-  }
-  return false;
+    if (feat > 0 || noise > 0) hit = true;
+  });
+  return hit;
 }
 
 function providersForTablePanel(p){
@@ -973,7 +997,7 @@ function encounterTableProviderCountHtml(p){
 
 function practiceEncAvgPerDayHtml(p){
   const days = slicerDaySpan();
-  if (!days || !p || !p.enc) return 'â€”';
+  if (!days || !p || !p.enc) return '—';
   const avg = p.enc / days;
   return avg >= 100 ? fmt(Math.round(avg)) : avg.toFixed(1);
 }
@@ -991,8 +1015,8 @@ function statusBadge(s){
     'Active':               'Practice is live and actively using the platform',
     'In Progress':          'Onboarding or implementation currently in progress',
     'Inactive':             'Practice is not currently active on the platform',
-    'Paused':               'Temporarily paused â€” not in active use',
-    'On Hold':              'On hold â€” pending a decision or action',
+    'Paused':               'Temporarily paused — not in active use',
+    'On Hold':              'On hold — pending a decision or action',
     'Cancelled':            'Contract or agreement has been cancelled',
     'Pending Cancellation': 'Cancellation request submitted, awaiting processing',
     'Rejected':             'Application or request was rejected',
@@ -1007,10 +1031,10 @@ function statusBadge(s){
 }
 function companyStatusBadge(s){
   const label = String(s || '').trim();
-  if (!label || label === 'â€”' || label.toLowerCase() === 'unknown' || looksLikeProductTier(label)) {
-    return '<span class="badge b-unknown" title="Company status from BCOwnership column E (Active, Suspended, Ex-Client, etc.)">â€”</span>';
+  if (!label || label === '—' || label.toLowerCase() === 'unknown' || looksLikeProductTier(label)) {
+    return '<span class="badge b-unknown" title="Company status from BCOwnership column E (Active, Suspended, Ex-Client, etc.)">—</span>';
   }
-  const tip = 'Company status (BCOwnership column E) â€” Active, Suspended, Ex-Client, Cancelled, etc.';
+  const tip = 'Company status (BCOwnership column E) — Active, Suspended, Ex-Client, Cancelled, etc.';
   const cls = ({
     'Active':'b-active', 'Trial':'b-active', 'In Progress':'b-progress',
     'Inactive':'b-inactive', 'Paused':'b-paused', 'On Hold':'b-paused',
@@ -1022,8 +1046,8 @@ function companyStatusBadge(s){
 }
 function pmaBadge(p){
   return p === 'Nova'
-    ? '<span class="badge b-pma-nova" title="Nova â€” modern cloud-based PMA platform">Nova</span>'
-    : '<span class="badge b-pma-mps" title="myMPS â€” standard PMA platform">myMPS</span>';
+    ? '<span class="badge b-pma-nova" title="Nova — modern cloud-based PMA platform">Nova</span>'
+    : '<span class="badge b-pma-mps" title="myMPS — standard PMA platform">myMPS</span>';
 }
 const PERSONA_DEFS = {
   'Power Clinical User':   { cls: 'b-power',     tip: '20-30 clinical active days in a 30-day period' },
@@ -1032,7 +1056,7 @@ const PERSONA_DEFS = {
   'Standard Clinical User':{ cls: 'b-standard',  tip: 'Legacy label - now Active Clinical User' },
   'Casual User':           { cls: 'b-casual',    tip: 'Legacy label - now Low Clinical User' },
   'Light Clinical User':   { cls: 'b-casual',    tip: 'Legacy label - now Low Clinical User' },
-  'Inactive':              { cls: 'b-inactive-p',tip: 'Legacy label â€” persona is based on clinical usage only' },
+  'Inactive':              { cls: 'b-inactive-p',tip: 'Legacy label — persona is based on clinical usage only' },
   'Dormant':               { cls: 'b-inactive-p',tip: '0 clinical active days in the selected 30-day window' },
 };
 function personaBadge(p){
@@ -1045,13 +1069,13 @@ function engagementBadge(e){
   return '<span class="badge b-eng-inactive" title="No events of any kind recorded in the selected date window">No activity</span>';
 }
 function versionChip(v, latest, on){
-  if (!v) return '<span class="badge b-ver-none">â€”</span>';
-  if (on) return `<span class="badge b-ver-ok">${escapeHtml(v)} âœ“</span>`;
+  if (!v) return '<span class="badge b-ver-none">—</span>';
+  if (on) return `<span class="badge b-ver-ok">${escapeHtml(v)} ✓</span>`;
   return `<span class="badge b-ver-old">${escapeHtml(v)}</span>`;
 }
 
 
-/** Leading numeric semver prefix â€” matches generate_dashboard_data.py */
+/** Leading numeric semver prefix — matches generate_dashboard_data.py */
 function appVersionTupleStr(s){
   if (s === null || s === undefined) return null;
   const m = String(s).trim().match(/^(\d+(?:\.\d+)*)/);
@@ -1089,7 +1113,7 @@ function severityBadge(s){
   return `<span class="badge ${cls}">${map[s]||s}</span>`;
 }
 
-/* Friendly feature labels â€” converts raw event keys to human-readable */
+/* Friendly feature labels — converts raw event keys to human-readable */
 const FEATURE_LABELS = {
   "AlgoliaSearch-Medicine-Search": "Algoliasearch Medicine Search",
   "ai-clinical-assistant-opened": "Ai Clinical Assistant Opened",
@@ -1269,7 +1293,7 @@ function updateMsButton(id, placeholder){
     btn.textContent = placeholder;
     return;
   }
-  if (vals.length === 1) btn.textContent = vals[0].length > 28 ? vals[0].slice(0, 26) + 'â€¦' : vals[0];
+  if (vals.length === 1) btn.textContent = vals[0].length > 28 ? vals[0].slice(0, 26) + '…' : vals[0];
   else btn.textContent = vals.length + ' selected';
 }
 
